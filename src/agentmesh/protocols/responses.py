@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 import time
 import uuid
+from collections.abc import AsyncIterator
 from typing import Any
 
-from agentmesh.domain import Message, NormalizedRequest, NormalizedResponse
+from agentmesh.domain import Message, NormalizedRequest, NormalizedResponse, StreamChunk
 
 
 def _part_text(part: object) -> str:
@@ -66,27 +68,43 @@ def response_envelope(
     status: str,
     output: list[dict[str, Any]],
     provider: str | None = None,
-    input_tokens: int = 0,
-    output_tokens: int = 0,
+    input_tokens: int | None = None,
+    output_tokens: int | None = None,
+    created_at: int | None = None,
 ) -> dict[str, Any]:
-    body: dict[str, Any] = {
-        "id": response_id,
-        "object": "response",
-        "created_at": int(time.time()),
-        "status": status,
-        "error": None,
-        "incomplete_details": None,
-        "instructions": None,
-        "model": model,
-        "output": output,
-        "parallel_tool_calls": True,
-        "tools": [],
-        "metadata": {},
-        "usage": {
+    created = int(time.time()) if created_at is None else created_at
+    usage = None
+    if input_tokens is not None and output_tokens is not None:
+        usage = {
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
             "total_tokens": input_tokens + output_tokens,
-        },
+        }
+    body: dict[str, Any] = {
+        "id": response_id,
+        "object": "response",
+        "created_at": created,
+        "status": status,
+        "completed_at": int(time.time()) if status == "completed" else None,
+        "error": None,
+        "incomplete_details": None,
+        "instructions": None,
+        "max_output_tokens": None,
+        "model": model,
+        "output": output,
+        "parallel_tool_calls": True,
+        "previous_response_id": None,
+        "reasoning": {"effort": None, "summary": None},
+        "store": True,
+        "temperature": 1.0,
+        "text": {"format": {"type": "text"}},
+        "tool_choice": "auto",
+        "tools": [],
+        "top_p": 1.0,
+        "truncation": "disabled",
+        "usage": usage,
+        "user": None,
+        "metadata": {},
     }
     if provider is not None:
         body["provider"] = provider
@@ -121,6 +139,145 @@ def render_responses_response(response: NormalizedResponse) -> dict[str, Any]:
         status="completed",
         output=output,
         provider=response.provider,
-        input_tokens=response.input_tokens or 0,
-        output_tokens=response.output_tokens or 0,
+        input_tokens=response.input_tokens,
+        output_tokens=response.output_tokens,
+    )
+
+
+def _sse(event_type: str, payload: dict[str, Any]) -> str:
+    event = {"type": event_type, **payload}
+    return f"event: {event_type}\ndata: {json.dumps(event)}\n\n"
+
+
+async def render_responses_stream(
+    chunks: AsyncIterator[StreamChunk],
+    model: str,
+) -> AsyncIterator[str]:
+    response_id = f"resp_{uuid.uuid4().hex}"
+    item_id = f"msg_{uuid.uuid4().hex}"
+    created_at = int(time.time())
+    sequence = 0
+
+    in_progress = response_envelope(
+        response_id,
+        model,
+        status="in_progress",
+        output=[],
+        created_at=created_at,
+    )
+    yield _sse(
+        "response.created",
+        {"response": in_progress, "sequence_number": sequence},
+    )
+    sequence += 1
+    yield _sse(
+        "response.in_progress",
+        {"response": in_progress, "sequence_number": sequence},
+    )
+    sequence += 1
+
+    added_item = {
+        "type": "message",
+        "id": item_id,
+        "status": "in_progress",
+        "role": "assistant",
+        "content": [],
+    }
+    yield _sse(
+        "response.output_item.added",
+        {
+            "output_index": 0,
+            "item": added_item,
+            "sequence_number": sequence,
+        },
+    )
+    sequence += 1
+
+    empty_part = {"type": "output_text", "text": "", "annotations": []}
+    yield _sse(
+        "response.content_part.added",
+        {
+            "item_id": item_id,
+            "output_index": 0,
+            "content_index": 0,
+            "part": empty_part,
+            "sequence_number": sequence,
+        },
+    )
+    sequence += 1
+
+    accumulated: list[str] = []
+    provider_name: str | None = None
+    model_name = model
+    async for chunk in chunks:
+        provider_name = chunk.provider
+        model_name = chunk.model
+        if chunk.done:
+            continue
+        accumulated.append(chunk.text)
+        yield _sse(
+            "response.output_text.delta",
+            {
+                "item_id": item_id,
+                "output_index": 0,
+                "content_index": 0,
+                "delta": chunk.text,
+                "sequence_number": sequence,
+            },
+        )
+        sequence += 1
+
+    text = "".join(accumulated)
+    completed_part = {"type": "output_text", "text": text, "annotations": []}
+    completed_item = {
+        "type": "message",
+        "id": item_id,
+        "status": "completed",
+        "role": "assistant",
+        "content": [completed_part],
+    }
+
+    yield _sse(
+        "response.output_text.done",
+        {
+            "item_id": item_id,
+            "output_index": 0,
+            "content_index": 0,
+            "text": text,
+            "sequence_number": sequence,
+        },
+    )
+    sequence += 1
+    yield _sse(
+        "response.content_part.done",
+        {
+            "item_id": item_id,
+            "output_index": 0,
+            "content_index": 0,
+            "part": completed_part,
+            "sequence_number": sequence,
+        },
+    )
+    sequence += 1
+    yield _sse(
+        "response.output_item.done",
+        {
+            "output_index": 0,
+            "item": completed_item,
+            "sequence_number": sequence,
+        },
+    )
+    sequence += 1
+
+    completed = response_envelope(
+        response_id,
+        model_name,
+        status="completed",
+        output=[completed_item],
+        provider=provider_name,
+        created_at=created_at,
+    )
+    yield _sse(
+        "response.completed",
+        {"response": completed, "sequence_number": sequence},
     )

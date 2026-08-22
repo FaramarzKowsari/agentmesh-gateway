@@ -18,7 +18,7 @@ from agentmesh.protocols.openai import parse_openai_request, render_openai_respo
 from agentmesh.protocols.responses import (
     parse_responses_request,
     render_responses_response,
-    response_envelope,
+    render_responses_stream,
 )
 from agentmesh.providers.registry import ProviderRegistry
 from agentmesh.routing.router import Router
@@ -139,92 +139,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def responses_api(payload: dict[str, Any]):
         normalized = parse_responses_request(payload)
         if normalized.stream:
-            async def generate():  # type: ignore[no-untyped-def]
-                response_id = f"resp_{uuid.uuid4().hex}"
-                item_id = f"msg_{uuid.uuid4().hex}"
-                sequence = 0
-                created = response_envelope(
-                    response_id,
-                    normalized.model,
-                    status="in_progress",
-                    output=[],
-                )
-                created_event = {
-                    "type": "response.created",
-                    "response": created,
-                    "sequence_number": sequence,
-                }
-                yield (
-                    "event: response.created\n"
-                    f"data: {json.dumps(created_event)}\n\n"
-                )
-                sequence += 1
-                added_item = {
-                    "type": "message",
-                    "id": item_id,
-                    "status": "in_progress",
-                    "role": "assistant",
-                    "content": [],
-                }
-                event = {
-                    "type": "response.output_item.added",
-                    "output_index": 0,
-                    "item": added_item,
-                    "sequence_number": sequence,
-                }
-                yield f"event: response.output_item.added\ndata: {json.dumps(event)}\n\n"
-                sequence += 1
-                accumulated: list[str] = []
-                provider_name = None
-                model_name = normalized.model
-                async for chunk in gateway.stream(normalized):
-                    provider_name = chunk.provider
-                    model_name = chunk.model
-                    if chunk.done:
-                        continue
-                    accumulated.append(chunk.text)
-                    event = {
-                        "type": "response.output_text.delta",
-                        "item_id": item_id,
-                        "output_index": 0,
-                        "content_index": 0,
-                        "delta": chunk.text,
-                        "sequence_number": sequence,
-                    }
-                    yield f"event: response.output_text.delta\ndata: {json.dumps(event)}\n\n"
-                    sequence += 1
-                text = "".join(accumulated)
-                done = {
-                    "type": "response.output_text.done",
-                    "item_id": item_id,
-                    "output_index": 0,
-                    "content_index": 0,
-                    "text": text,
-                    "sequence_number": sequence,
-                }
-                yield f"event: response.output_text.done\ndata: {json.dumps(done)}\n\n"
-                sequence += 1
-                output_item = {
-                    "type": "message",
-                    "id": item_id,
-                    "status": "completed",
-                    "role": "assistant",
-                    "content": [{"type": "output_text", "text": text, "annotations": []}],
-                }
-                completed = response_envelope(
-                    response_id,
-                    model_name,
-                    status="completed",
-                    output=[output_item],
-                    provider=provider_name,
-                )
-                event = {
-                    "type": "response.completed",
-                    "response": completed,
-                    "sequence_number": sequence,
-                }
-                yield f"event: response.completed\ndata: {json.dumps(event)}\n\n"
-            return StreamingResponse(generate(), media_type="text/event-stream")
+            events = render_responses_stream(
+                gateway.stream(normalized),
+                normalized.model,
+            )
+            return StreamingResponse(events, media_type="text/event-stream")
         response = await gateway.complete(normalized)
         return render_responses_response(response)
 
