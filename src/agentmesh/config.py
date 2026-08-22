@@ -24,7 +24,7 @@ class ProviderSpec:
     timeout_seconds: float = 120.0
 
     @classmethod
-    def from_dict(cls, data: dict[str, object]) -> "ProviderSpec":
+    def from_dict(cls, data: dict[str, object]) -> ProviderSpec:
         try:
             models = tuple(str(x) for x in data.get("models", []))
             if not models:
@@ -59,7 +59,7 @@ class Settings:
     providers: tuple[ProviderSpec, ...] = ()
 
     @classmethod
-    def from_env(cls) -> "Settings":
+    def from_env(cls) -> Settings:
         raw = os.getenv("AGENTMESH_PROVIDERS_JSON")
         if raw:
             try:
