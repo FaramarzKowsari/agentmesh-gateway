@@ -7,7 +7,14 @@ from agentmesh.routing.state import RuntimeStateStore
 def specs() -> tuple[ProviderSpec, ...]:
     return (
         ProviderSpec("cheap", "openai", "http://cheap", ("m",), cost_hint=0.1, quality_hint=0.5),
-        ProviderSpec("quality", "openai", "http://quality", ("m",), cost_hint=0.8, quality_hint=0.95),
+        ProviderSpec(
+            "quality",
+            "openai",
+            "http://quality",
+            ("m",),
+            cost_hint=0.8,
+            quality_hint=0.95,
+        ),
     )
 
 
