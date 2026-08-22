@@ -7,7 +7,7 @@ from collections.abc import AsyncIterator
 import httpx
 
 from agentmesh.config import ProviderSpec
-from agentmesh.domain import NormalizedRequest, NormalizedResponse, StreamChunk
+from agentmesh.domain import FunctionCall, Message, NormalizedRequest, NormalizedResponse, StreamChunk
 from agentmesh.providers.http_errors import translate_http_error
 
 
@@ -33,10 +33,38 @@ class OpenAICompatibleProvider:
             return requested
         return self.spec.models[0]
 
+    @staticmethod
+    def _message_payload(message: Message) -> dict[str, object]:
+        payload: dict[str, object] = {"role": message.role, "content": message.content}
+        if message.tool_calls:
+            payload["content"] = message.content or None
+            payload["tool_calls"] = [
+                {
+                    "id": call.call_id,
+                    "type": "function",
+                    "function": {"name": call.name, "arguments": call.arguments},
+                }
+                for call in message.tool_calls
+            ]
+        if message.tool_call_id:
+            payload["tool_call_id"] = message.tool_call_id
+        return payload
+
+    @staticmethod
+    def _tool_payload(tool: dict[str, object]) -> dict[str, object]:
+        if tool.get("type") != "function" or "function" in tool:
+            return dict(tool)
+        function = {
+            key: tool[key]
+            for key in ("name", "description", "parameters", "strict")
+            if key in tool
+        }
+        return {"type": "function", "function": function}
+
     def _payload(self, request: NormalizedRequest, *, stream: bool) -> dict[str, object]:
         payload: dict[str, object] = {
             "model": self._resolve_model(request.model),
-            "messages": [{"role": m.role, "content": m.content} for m in request.messages],
+            "messages": [self._message_payload(message) for message in request.messages],
             "stream": stream,
         }
         if request.max_tokens is not None:
@@ -44,7 +72,7 @@ class OpenAICompatibleProvider:
         if request.temperature is not None:
             payload["temperature"] = request.temperature
         if request.tools:
-            payload["tools"] = list(request.tools)
+            payload["tools"] = [self._tool_payload(tool) for tool in request.tools]
         return payload
 
     async def complete(self, request: NormalizedRequest) -> NormalizedResponse:
@@ -58,7 +86,21 @@ class OpenAICompatibleProvider:
         except httpx.HTTPError as exc:
             raise translate_http_error(self.name, exc) from exc
         data = response.json()
-        content = data["choices"][0]["message"].get("content") or ""
+        message = data["choices"][0]["message"]
+        content = message.get("content") or ""
+        tool_calls: list[FunctionCall] = []
+        for item in message.get("tool_calls") or []:
+            function = item.get("function") or {}
+            arguments = function.get("arguments") or "{}"
+            if not isinstance(arguments, str):
+                arguments = json.dumps(arguments, separators=(",", ":"), sort_keys=True)
+            tool_calls.append(
+                FunctionCall(
+                    call_id=str(item.get("id") or ""),
+                    name=str(function.get("name") or ""),
+                    arguments=arguments,
+                )
+            )
         usage = data.get("usage") or {}
         return NormalizedResponse(
             provider=self.name,
@@ -67,6 +109,7 @@ class OpenAICompatibleProvider:
             input_tokens=usage.get("prompt_tokens"),
             output_tokens=usage.get("completion_tokens"),
             raw_id=data.get("id"),
+            tool_calls=tuple(tool_calls),
         )
 
     async def stream(self, request: NormalizedRequest) -> AsyncIterator[StreamChunk]:
