@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from agentmesh import __version__
 from agentmesh.api.security import require_gateway_token
 from agentmesh.config import Settings
-from agentmesh.errors import NoProviderAvailable, ProviderError
+from agentmesh.errors import ClientRequestError, NoProviderAvailable, ProviderError
 from agentmesh.gateway.service import GatewayService
 from agentmesh.protocols.anthropic import parse_anthropic_request, render_anthropic_response
 from agentmesh.protocols.openai import parse_openai_request, render_openai_response
@@ -20,6 +20,7 @@ from agentmesh.protocols.responses import (
     render_responses_response,
     render_responses_stream,
 )
+from agentmesh.protocols.responses_validation import validate_responses_payload
 from agentmesh.providers.registry import ProviderRegistry
 from agentmesh.routing.router import Router
 from agentmesh.routing.state import RuntimeStateStore
@@ -52,6 +53,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         response = await call_next(request)
         response.headers["x-request-id"] = request_id
         return response
+
+    @app.exception_handler(ClientRequestError)
+    async def client_error_handler(_request: Request, exc: ClientRequestError) -> JSONResponse:
+        error: dict[str, object] = {
+            "type": "invalid_request_error",
+            "code": exc.code,
+            "message": str(exc),
+        }
+        if exc.feature is not None:
+            error["feature"] = exc.feature
+        return JSONResponse(status_code=400, content={"error": error})
 
     @app.exception_handler(ProviderError)
     async def provider_error_handler(_request: Request, exc: ProviderError) -> JSONResponse:
@@ -137,6 +149,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/v1/responses", dependencies=[Depends(require_gateway_token)])
     async def responses_api(payload: dict[str, Any]):
+        validate_responses_payload(payload)
         normalized = parse_responses_request(payload)
         if normalized.stream:
             events = render_responses_stream(
