@@ -14,6 +14,14 @@ class FunctionCall:
 
 
 @dataclass(slots=True, frozen=True)
+class FunctionCallDelta:
+    index: int
+    call_id: str | None = None
+    name: str | None = None
+    arguments_delta: str = ""
+
+
+@dataclass(slots=True, frozen=True)
 class Message:
     role: Role
     content: str
@@ -47,5 +55,6 @@ class NormalizedResponse:
 class StreamChunk:
     provider: str
     model: str
-    text: str
+    text: str = ""
     done: bool = False
+    function_call_delta: FunctionCallDelta | None = None

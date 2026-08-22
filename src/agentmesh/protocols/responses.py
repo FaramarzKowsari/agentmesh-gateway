@@ -4,6 +4,7 @@ import json
 import time
 import uuid
 from collections.abc import AsyncIterator
+from dataclasses import dataclass, field
 from typing import Any
 
 from agentmesh.domain import (
@@ -13,6 +14,24 @@ from agentmesh.domain import (
     NormalizedResponse,
     StreamChunk,
 )
+
+
+@dataclass(slots=True)
+class _TextStreamState:
+    item_id: str
+    output_index: int
+    chunks: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class _FunctionStreamState:
+    item_id: str
+    output_index: int
+    call_id: str | None = None
+    name: str | None = None
+    argument_deltas: list[str] = field(default_factory=list)
+    emitted_argument_count: int = 0
+    announced: bool = False
 
 
 def _part_text(part: object) -> str:
@@ -205,14 +224,30 @@ def _sse(event_type: str, payload: dict[str, Any]) -> str:
     return f"event: {event_type}\ndata: {json.dumps(event)}\n\n"
 
 
+def _function_item(state: _FunctionStreamState, *, status: str) -> dict[str, Any]:
+    return {
+        "type": "function_call",
+        "id": state.item_id,
+        "call_id": state.call_id or "",
+        "name": state.name or "",
+        "arguments": "".join(state.argument_deltas),
+        "status": status,
+    }
+
+
 async def render_responses_stream(
     chunks: AsyncIterator[StreamChunk],
     model: str,
 ) -> AsyncIterator[str]:
     response_id = f"resp_{uuid.uuid4().hex}"
-    item_id = f"msg_{uuid.uuid4().hex}"
     created_at = int(time.time())
     sequence = 0
+    next_output_index = 0
+    text_state: _TextStreamState | None = None
+    function_states: dict[int, _FunctionStreamState] = {}
+    output_order: list[tuple[str, object]] = []
+    provider_name: str | None = None
+    model_name = model
 
     in_progress = response_envelope(
         response_id,
@@ -232,104 +267,230 @@ async def render_responses_stream(
     )
     sequence += 1
 
-    added_item = {
-        "type": "message",
-        "id": item_id,
-        "status": "in_progress",
-        "role": "assistant",
-        "content": [],
-    }
-    yield _sse(
-        "response.output_item.added",
-        {
-            "output_index": 0,
-            "item": added_item,
-            "sequence_number": sequence,
-        },
-    )
-    sequence += 1
-
-    empty_part = {"type": "output_text", "text": "", "annotations": []}
-    yield _sse(
-        "response.content_part.added",
-        {
-            "item_id": item_id,
-            "output_index": 0,
-            "content_index": 0,
-            "part": empty_part,
-            "sequence_number": sequence,
-        },
-    )
-    sequence += 1
-
-    accumulated: list[str] = []
-    provider_name: str | None = None
-    model_name = model
     async for chunk in chunks:
         provider_name = chunk.provider
         model_name = chunk.model
         if chunk.done:
             continue
-        accumulated.append(chunk.text)
+
+        if chunk.text:
+            if text_state is None:
+                text_state = _TextStreamState(
+                    item_id=f"msg_{uuid.uuid4().hex}",
+                    output_index=next_output_index,
+                )
+                next_output_index += 1
+                output_order.append(("text", text_state))
+                added_item = {
+                    "type": "message",
+                    "id": text_state.item_id,
+                    "status": "in_progress",
+                    "role": "assistant",
+                    "content": [],
+                }
+                yield _sse(
+                    "response.output_item.added",
+                    {
+                        "output_index": text_state.output_index,
+                        "item": added_item,
+                        "sequence_number": sequence,
+                    },
+                )
+                sequence += 1
+                empty_part = {
+                    "type": "output_text",
+                    "text": "",
+                    "annotations": [],
+                }
+                yield _sse(
+                    "response.content_part.added",
+                    {
+                        "item_id": text_state.item_id,
+                        "output_index": text_state.output_index,
+                        "content_index": 0,
+                        "part": empty_part,
+                        "sequence_number": sequence,
+                    },
+                )
+                sequence += 1
+
+            text_state.chunks.append(chunk.text)
+            yield _sse(
+                "response.output_text.delta",
+                {
+                    "item_id": text_state.item_id,
+                    "output_index": text_state.output_index,
+                    "content_index": 0,
+                    "delta": chunk.text,
+                    "sequence_number": sequence,
+                },
+            )
+            sequence += 1
+
+        delta = chunk.function_call_delta
+        if delta is not None:
+            state = function_states.get(delta.index)
+            if state is None:
+                state = _FunctionStreamState(
+                    item_id=f"fc_{uuid.uuid4().hex}",
+                    output_index=next_output_index,
+                )
+                next_output_index += 1
+                function_states[delta.index] = state
+                output_order.append(("function", state))
+            if delta.call_id:
+                state.call_id = delta.call_id
+            if delta.name:
+                state.name = delta.name
+            if delta.arguments_delta:
+                state.argument_deltas.append(delta.arguments_delta)
+
+            if not state.announced and state.name:
+                if state.call_id is None:
+                    state.call_id = f"call_{uuid.uuid4().hex}"
+                added_call = _function_item(state, status="in_progress")
+                added_call["arguments"] = ""
+                yield _sse(
+                    "response.output_item.added",
+                    {
+                        "output_index": state.output_index,
+                        "item": added_call,
+                        "sequence_number": sequence,
+                    },
+                )
+                sequence += 1
+                state.announced = True
+
+            if state.announced:
+                while state.emitted_argument_count < len(state.argument_deltas):
+                    argument_delta = state.argument_deltas[state.emitted_argument_count]
+                    yield _sse(
+                        "response.function_call_arguments.delta",
+                        {
+                            "item_id": state.item_id,
+                            "output_index": state.output_index,
+                            "delta": argument_delta,
+                            "sequence_number": sequence,
+                        },
+                    )
+                    sequence += 1
+                    state.emitted_argument_count += 1
+
+    completed_output: list[tuple[int, dict[str, Any]]] = []
+    for kind, raw_state in output_order:
+        if kind == "text":
+            state = raw_state
+            assert isinstance(state, _TextStreamState)
+            text = "".join(state.chunks)
+            completed_part = {
+                "type": "output_text",
+                "text": text,
+                "annotations": [],
+            }
+            completed_item = {
+                "type": "message",
+                "id": state.item_id,
+                "status": "completed",
+                "role": "assistant",
+                "content": [completed_part],
+            }
+            yield _sse(
+                "response.output_text.done",
+                {
+                    "item_id": state.item_id,
+                    "output_index": state.output_index,
+                    "content_index": 0,
+                    "text": text,
+                    "sequence_number": sequence,
+                },
+            )
+            sequence += 1
+            yield _sse(
+                "response.content_part.done",
+                {
+                    "item_id": state.item_id,
+                    "output_index": state.output_index,
+                    "content_index": 0,
+                    "part": completed_part,
+                    "sequence_number": sequence,
+                },
+            )
+            sequence += 1
+            yield _sse(
+                "response.output_item.done",
+                {
+                    "output_index": state.output_index,
+                    "item": completed_item,
+                    "sequence_number": sequence,
+                },
+            )
+            sequence += 1
+            completed_output.append((state.output_index, completed_item))
+            continue
+
+        state = raw_state
+        assert isinstance(state, _FunctionStreamState)
+        if not state.name:
+            raise ValueError("streamed function call ended without a function name")
+        if state.call_id is None:
+            state.call_id = f"call_{uuid.uuid4().hex}"
+        if not state.announced:
+            added_call = _function_item(state, status="in_progress")
+            added_call["arguments"] = ""
+            yield _sse(
+                "response.output_item.added",
+                {
+                    "output_index": state.output_index,
+                    "item": added_call,
+                    "sequence_number": sequence,
+                },
+            )
+            sequence += 1
+            state.announced = True
+        while state.emitted_argument_count < len(state.argument_deltas):
+            argument_delta = state.argument_deltas[state.emitted_argument_count]
+            yield _sse(
+                "response.function_call_arguments.delta",
+                {
+                    "item_id": state.item_id,
+                    "output_index": state.output_index,
+                    "delta": argument_delta,
+                    "sequence_number": sequence,
+                },
+            )
+            sequence += 1
+            state.emitted_argument_count += 1
+
+        arguments = "".join(state.argument_deltas)
         yield _sse(
-            "response.output_text.delta",
+            "response.function_call_arguments.done",
             {
-                "item_id": item_id,
-                "output_index": 0,
-                "content_index": 0,
-                "delta": chunk.text,
+                "item_id": state.item_id,
+                "output_index": state.output_index,
+                "name": state.name,
+                "arguments": arguments,
                 "sequence_number": sequence,
             },
         )
         sequence += 1
+        completed_item = _function_item(state, status="completed")
+        yield _sse(
+            "response.output_item.done",
+            {
+                "output_index": state.output_index,
+                "item": completed_item,
+                "sequence_number": sequence,
+            },
+        )
+        sequence += 1
+        completed_output.append((state.output_index, completed_item))
 
-    text = "".join(accumulated)
-    completed_part = {"type": "output_text", "text": text, "annotations": []}
-    completed_item = {
-        "type": "message",
-        "id": item_id,
-        "status": "completed",
-        "role": "assistant",
-        "content": [completed_part],
-    }
-
-    yield _sse(
-        "response.output_text.done",
-        {
-            "item_id": item_id,
-            "output_index": 0,
-            "content_index": 0,
-            "text": text,
-            "sequence_number": sequence,
-        },
-    )
-    sequence += 1
-    yield _sse(
-        "response.content_part.done",
-        {
-            "item_id": item_id,
-            "output_index": 0,
-            "content_index": 0,
-            "part": completed_part,
-            "sequence_number": sequence,
-        },
-    )
-    sequence += 1
-    yield _sse(
-        "response.output_item.done",
-        {
-            "output_index": 0,
-            "item": completed_item,
-            "sequence_number": sequence,
-        },
-    )
-    sequence += 1
-
+    completed_output.sort(key=lambda item: item[0])
     completed = response_envelope(
         response_id,
         model_name,
         status="completed",
-        output=[completed_item],
+        output=[item for _, item in completed_output],
         provider=provider_name,
         created_at=created_at,
     )

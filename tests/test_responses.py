@@ -5,7 +5,12 @@ from collections.abc import AsyncIterator
 
 import pytest
 
-from agentmesh.domain import FunctionCall, NormalizedResponse, StreamChunk
+from agentmesh.domain import (
+    FunctionCall,
+    FunctionCallDelta,
+    NormalizedResponse,
+    StreamChunk,
+)
 from agentmesh.protocols.responses import (
     parse_responses_request,
     render_responses_response,
@@ -112,7 +117,29 @@ def test_render_responses_function_call_output_item() -> None:
 async def response_chunks() -> AsyncIterator[StreamChunk]:
     yield StreamChunk(provider="p", model="resolved-model", text="hel")
     yield StreamChunk(provider="p", model="resolved-model", text="lo")
-    yield StreamChunk(provider="p", model="resolved-model", text="", done=True)
+    yield StreamChunk(provider="p", model="resolved-model", done=True)
+
+
+async def function_call_chunks() -> AsyncIterator[StreamChunk]:
+    yield StreamChunk(
+        provider="p",
+        model="resolved-model",
+        function_call_delta=FunctionCallDelta(
+            index=0,
+            call_id="call_123",
+            name="get_weather",
+            arguments_delta="{\"city\":\"",
+        ),
+    )
+    yield StreamChunk(
+        provider="p",
+        model="resolved-model",
+        function_call_delta=FunctionCallDelta(
+            index=0,
+            arguments_delta="Istanbul\"}",
+        ),
+    )
+    yield StreamChunk(provider="p", model="resolved-model", done=True)
 
 
 def parse_sse_event(raw: str) -> tuple[str, dict[str, object]]:
@@ -153,6 +180,47 @@ async def test_responses_stream_has_complete_text_lifecycle() -> None:
     assert completed["provider"] == "p"
     assert completed["usage"] is None
     assert completed["output"][0]["content"][0]["text"] == "hello"
+
+
+@pytest.mark.asyncio
+async def test_responses_stream_has_complete_function_call_lifecycle() -> None:
+    raw_events = [
+        event async for event in render_responses_stream(function_call_chunks(), "auto")
+    ]
+    events = [parse_sse_event(event) for event in raw_events]
+
+    assert [event_type for event_type, _ in events] == [
+        "response.created",
+        "response.in_progress",
+        "response.output_item.added",
+        "response.function_call_arguments.delta",
+        "response.function_call_arguments.delta",
+        "response.function_call_arguments.done",
+        "response.output_item.done",
+        "response.completed",
+    ]
+    assert [payload["sequence_number"] for _, payload in events] == list(range(8))
+
+    added = events[2][1]["item"]
+    assert isinstance(added, dict)
+    assert added["type"] == "function_call"
+    assert added["call_id"] == "call_123"
+    assert added["name"] == "get_weather"
+    assert added["arguments"] == ""
+    assert added["status"] == "in_progress"
+
+    arguments_done = events[5][1]
+    assert arguments_done["name"] == "get_weather"
+    assert arguments_done["arguments"] == "{\"city\":\"Istanbul\"}"
+
+    completed = events[-1][1]["response"]
+    assert isinstance(completed, dict)
+    call = completed["output"][0]
+    assert call["type"] == "function_call"
+    assert call["call_id"] == "call_123"
+    assert call["name"] == "get_weather"
+    assert call["arguments"] == "{\"city\":\"Istanbul\"}"
+    assert call["status"] == "completed"
 
 
 def test_unknown_nonstream_usage_is_not_fabricated() -> None:
