@@ -5,7 +5,7 @@ from collections.abc import AsyncIterator
 
 import pytest
 
-from agentmesh.domain import NormalizedResponse, StreamChunk
+from agentmesh.domain import FunctionCall, NormalizedResponse, StreamChunk
 from agentmesh.protocols.responses import (
     parse_responses_request,
     render_responses_response,
@@ -36,6 +36,38 @@ def test_parse_responses_item_input() -> None:
     assert request.messages[0].content == "hello"
 
 
+def test_parse_responses_function_call_and_output_items() -> None:
+    request = parse_responses_request(
+        {
+            "model": "m",
+            "input": [
+                {
+                    "type": "function_call",
+                    "call_id": "call_123",
+                    "name": "get_weather",
+                    "arguments": "{\"city\":\"Istanbul\"}",
+                },
+                {
+                    "type": "function_call_output",
+                    "call_id": "call_123",
+                    "output": {"temperature": 24},
+                },
+            ],
+        }
+    )
+
+    assistant = request.messages[0]
+    assert assistant.role == "assistant"
+    assert assistant.tool_calls[0].call_id == "call_123"
+    assert assistant.tool_calls[0].name == "get_weather"
+    assert assistant.tool_calls[0].arguments == "{\"city\":\"Istanbul\"}"
+
+    tool_result = request.messages[1]
+    assert tool_result.role == "tool"
+    assert tool_result.tool_call_id == "call_123"
+    assert tool_result.content == "{\"temperature\":24}"
+
+
 def test_render_responses_response() -> None:
     body = render_responses_response(
         NormalizedResponse(
@@ -50,6 +82,31 @@ def test_render_responses_response() -> None:
     assert body["status"] == "completed"
     assert body["output"][0]["content"][0]["text"] == "answer"
     assert body["usage"]["total_tokens"] == 5
+
+
+def test_render_responses_function_call_output_item() -> None:
+    body = render_responses_response(
+        NormalizedResponse(
+            provider="p",
+            model="m",
+            content="",
+            tool_calls=(
+                FunctionCall(
+                    call_id="call_123",
+                    name="get_weather",
+                    arguments="{\"city\":\"Istanbul\"}",
+                ),
+            ),
+        )
+    )
+
+    assert len(body["output"]) == 1
+    call = body["output"][0]
+    assert call["type"] == "function_call"
+    assert call["call_id"] == "call_123"
+    assert call["name"] == "get_weather"
+    assert call["arguments"] == "{\"city\":\"Istanbul\"}"
+    assert call["status"] == "completed"
 
 
 async def response_chunks() -> AsyncIterator[StreamChunk]:
