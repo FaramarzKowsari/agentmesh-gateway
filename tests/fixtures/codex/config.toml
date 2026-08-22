@@ -1,0 +1,8 @@
+model = "m"
+model_provider = "agentmesh"
+
+[model_providers.agentmesh]
+name = "AgentMesh Gateway"
+base_url = "http://127.0.0.1:8787/v1"
+wire_api = "responses"
+supports_websockets = false
