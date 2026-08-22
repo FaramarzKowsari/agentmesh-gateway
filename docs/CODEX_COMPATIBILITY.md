@@ -27,18 +27,21 @@ The fixture is stored at `tests/fixtures/codex/config.toml`.
 
 ## What the harness proves
 
-`tests/test_codex_contract.py` sends a Codex-shaped Responses request into the real AgentMesh ASGI application. The request contains instructions, message input, streaming mode, and a flat function-tool schema. AgentMesh then routes the normalized request through its real OpenAI-compatible provider adapter backed by `httpx.MockTransport`.
+`tests/test_codex_contract.py` sends a Codex-shaped text request into the real AgentMesh ASGI application. `tests/test_codex_tool_contract.py` extends the same public boundary through a complete custom-function turn. Both tests route through AgentMesh's real provider selection and OpenAI-compatible adapter backed by `httpx.MockTransport`.
 
-The test verifies that:
+The contract suite verifies that:
 
 - instructions become a system message for a Chat Completions-style upstream;
 - user input survives normalization;
 - a Responses function tool becomes the nested Chat Completions function schema;
-- the fake upstream can return Chat Completions SSE chunks;
-- AgentMesh reconstructs those chunks as an ordered Responses SSE lifecycle;
-- the final response preserves the selected model/provider and exact assistant text.
+- text Chat Completions SSE is reconstructed as an ordered Responses SSE lifecycle;
+- streamed Chat Completions `tool_calls` become Responses function-call argument events;
+- the completed function call preserves its call ID, function name, and exact JSON arguments;
+- a following Responses `function_call_output` becomes the matching assistant tool call plus tool-result message for the upstream;
+- the continuation can stream a final assistant text response through `/v1/responses`;
+- a streamed tool call commits the response, preventing silent failover after the client has observed tool state.
 
-No external network call is made by the contract test.
+No external network call is made by the contract tests.
 
 ## Provenance of the contract
 
@@ -51,4 +54,4 @@ AgentMesh intentionally tests the public wire boundary rather than copying Codex
 
 ## What this does not prove
 
-This contract must not be described as complete Codex compatibility. It does not yet prove streaming function-call argument deltas, reasoning-item preservation, built-in OpenAI tools, websocket sampling, authentication modes, multi-agent behavior, or every Codex CLI/SDK feature. Those require separate explicit gates.
+This contract must not be described as complete Codex compatibility. It does not yet prove reasoning-item preservation, built-in OpenAI tool semantics, websocket sampling, all authentication modes, images/audio, multi-agent behavior, or every Codex CLI/SDK feature. Those require separate explicit gates.
