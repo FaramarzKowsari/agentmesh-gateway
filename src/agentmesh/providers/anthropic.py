@@ -7,7 +7,7 @@ from collections.abc import AsyncIterator
 import httpx
 
 from agentmesh.config import ProviderSpec
-from agentmesh.domain import NormalizedRequest, NormalizedResponse, StreamChunk
+from agentmesh.domain import FunctionCall, Message, NormalizedRequest, NormalizedResponse, StreamChunk
 from agentmesh.providers.http_errors import translate_http_error
 
 
@@ -33,12 +33,68 @@ class AnthropicProvider:
             return requested
         return self.spec.models[0]
 
+    @staticmethod
+    def _arguments_object(arguments: str) -> object:
+        try:
+            return json.loads(arguments)
+        except json.JSONDecodeError:
+            return {"raw": arguments}
+
+    @classmethod
+    def _message_payload(cls, message: Message) -> dict[str, object]:
+        if message.tool_call_id:
+            return {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": message.tool_call_id,
+                        "content": message.content,
+                    }
+                ],
+            }
+
+        role = message.role if message.role in {"user", "assistant"} else "user"
+        if not message.tool_calls:
+            return {"role": role, "content": message.content}
+
+        blocks: list[dict[str, object]] = []
+        if message.content:
+            blocks.append({"type": "text", "text": message.content})
+        blocks.extend(
+            {
+                "type": "tool_use",
+                "id": call.call_id,
+                "name": call.name,
+                "input": cls._arguments_object(call.arguments),
+            }
+            for call in message.tool_calls
+        )
+        return {"role": "assistant", "content": blocks}
+
+    @staticmethod
+    def _tool_payload(tool: dict[str, object]) -> dict[str, object]:
+        if tool.get("type") != "function":
+            return dict(tool)
+        if isinstance(tool.get("function"), dict):
+            function = tool["function"]
+            return {
+                "name": function.get("name", ""),
+                "description": function.get("description", ""),
+                "input_schema": function.get("parameters", {"type": "object"}),
+            }
+        return {
+            "name": tool.get("name", ""),
+            "description": tool.get("description", ""),
+            "input_schema": tool.get("parameters", {"type": "object"}),
+        }
+
     def _payload(self, request: NormalizedRequest, *, stream: bool) -> dict[str, object]:
-        system_parts = [m.content for m in request.messages if m.role == "system"]
+        system_parts = [message.content for message in request.messages if message.role == "system"]
         messages = [
-            {"role": m.role if m.role in {"user", "assistant"} else "user", "content": m.content}
-            for m in request.messages
-            if m.role != "system"
+            self._message_payload(message)
+            for message in request.messages
+            if message.role != "system"
         ]
         payload: dict[str, object] = {
             "model": self._resolve_model(request.model),
@@ -51,7 +107,7 @@ class AnthropicProvider:
         if request.temperature is not None:
             payload["temperature"] = request.temperature
         if request.tools:
-            payload["tools"] = list(request.tools)
+            payload["tools"] = [self._tool_payload(tool) for tool in request.tools]
         return payload
 
     async def complete(self, request: NormalizedRequest) -> NormalizedResponse:
@@ -65,10 +121,24 @@ class AnthropicProvider:
         except httpx.HTTPError as exc:
             raise translate_http_error(self.name, exc) from exc
         data = response.json()
+        content_blocks = data.get("content", [])
         text = "".join(
             str(block.get("text", ""))
-            for block in data.get("content", [])
+            for block in content_blocks
             if block.get("type") == "text"
+        )
+        tool_calls = tuple(
+            FunctionCall(
+                call_id=str(block.get("id") or ""),
+                name=str(block.get("name") or ""),
+                arguments=json.dumps(
+                    block.get("input") or {},
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ),
+            )
+            for block in content_blocks
+            if block.get("type") == "tool_use"
         )
         usage = data.get("usage") or {}
         return NormalizedResponse(
@@ -78,6 +148,7 @@ class AnthropicProvider:
             input_tokens=usage.get("input_tokens"),
             output_tokens=usage.get("output_tokens"),
             raw_id=data.get("id"),
+            tool_calls=tool_calls,
         )
 
     async def stream(self, request: NormalizedRequest) -> AsyncIterator[StreamChunk]:
