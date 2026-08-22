@@ -149,7 +149,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     status="in_progress",
                     output=[],
                 )
-                yield f"event: response.created\ndata: {json.dumps({'type': 'response.created', 'response': created, 'sequence_number': sequence})}\n\n"
+                created_event = {
+                    "type": "response.created",
+                    "response": created,
+                    "sequence_number": sequence,
+                }
+                yield (
+                    "event: response.created\n"
+                    f"data: {json.dumps(created_event)}\n\n"
+                )
                 sequence += 1
                 added_item = {
                     "type": "message",
