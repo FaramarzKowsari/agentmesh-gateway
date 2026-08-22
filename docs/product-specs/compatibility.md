@@ -4,23 +4,29 @@
 
 A coding client should target one AgentMesh endpoint and continue to work when the selected upstream changes.
 
-## Supported in v0.1
+## Verified support
 
 - OpenAI Chat Completions-shaped ingress for text conversations
-- OpenAI Responses-shaped text ingress and basic text streaming lifecycle
+- OpenAI Responses-shaped text ingress and ordered text streaming lifecycle
 - Anthropic Messages-shaped ingress for text conversations
 - generic OpenAI-compatible upstreams
 - Anthropic Messages upstreams
 - non-streaming completion
-- text streaming
-- optional tool payload pass-through where the selected upstream uses the same tool schema
+- text streaming with failover only before the first committed chunk
+- request ID propagation and provider circuit recovery
+- non-streaming function-call and function-result normalization across:
+  - OpenAI Responses `function_call` / `function_call_output`
+  - OpenAI Chat Completions `tool_calls` / `tool_call_id`
+  - Anthropic Messages `tool_use` / `tool_result`
+- function-tool schema conversion between flat Responses tools, Chat Completions tools,
+  and Anthropic `input_schema`
 
 ## Explicitly incomplete
 
 The following are roadmap items and must not be claimed as complete:
 
-- complete OpenAI Responses API lifecycle compatibility beyond text (tools/reasoning/images)
-- cross-vendor tool-call translation
+- streaming function-call argument delta translation across vendors
+- complete OpenAI Responses compatibility for reasoning, images, audio, and built-in tools
 - image/audio normalization
 - prompt caching semantics
 - batch APIs
