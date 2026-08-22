@@ -9,6 +9,7 @@ import httpx
 from agentmesh.config import ProviderSpec
 from agentmesh.domain import (
     FunctionCall,
+    FunctionCallDelta,
     Message,
     NormalizedRequest,
     NormalizedResponse,
@@ -176,13 +177,50 @@ class AnthropicProvider:
                     if not body:
                         continue
                     data = json.loads(body)
-                    if data.get("type") == "content_block_delta":
+                    event_type = data.get("type")
+                    if event_type == "content_block_start":
+                        block = data.get("content_block") or {}
+                        if block.get("type") != "tool_use":
+                            continue
+                        initial_input = block.get("input")
+                        initial_arguments = ""
+                        if initial_input not in (None, {}):
+                            initial_arguments = json.dumps(
+                                initial_input,
+                                separators=(",", ":"),
+                                sort_keys=True,
+                            )
+                        yield StreamChunk(
+                            provider=self.name,
+                            model=model,
+                            function_call_delta=FunctionCallDelta(
+                                index=int(data.get("index", 0)),
+                                call_id=str(block.get("id") or ""),
+                                name=str(block.get("name") or ""),
+                                arguments_delta=initial_arguments,
+                            ),
+                        )
+                    elif event_type == "content_block_delta":
                         delta = data.get("delta") or {}
+                        if delta.get("type") == "input_json_delta":
+                            yield StreamChunk(
+                                provider=self.name,
+                                model=model,
+                                function_call_delta=FunctionCallDelta(
+                                    index=int(data.get("index", 0)),
+                                    arguments_delta=str(delta.get("partial_json") or ""),
+                                ),
+                            )
+                            continue
                         text = delta.get("text") or ""
                         if text:
-                            yield StreamChunk(provider=self.name, model=model, text=str(text))
-                    elif data.get("type") == "message_stop":
-                        yield StreamChunk(provider=self.name, model=model, text="", done=True)
+                            yield StreamChunk(
+                                provider=self.name,
+                                model=model,
+                                text=str(text),
+                            )
+                    elif event_type == "message_stop":
+                        yield StreamChunk(provider=self.name, model=model, done=True)
                         return
         except httpx.HTTPError as exc:
             raise translate_http_error(self.name, exc) from exc
