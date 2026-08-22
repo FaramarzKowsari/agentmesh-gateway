@@ -7,7 +7,13 @@ from collections.abc import AsyncIterator
 import httpx
 
 from agentmesh.config import ProviderSpec
-from agentmesh.domain import FunctionCall, Message, NormalizedRequest, NormalizedResponse, StreamChunk
+from agentmesh.domain import (
+    FunctionCall,
+    Message,
+    NormalizedRequest,
+    NormalizedResponse,
+    StreamChunk,
+)
 from agentmesh.providers.http_errors import translate_http_error
 
 
@@ -90,7 +96,9 @@ class AnthropicProvider:
         }
 
     def _payload(self, request: NormalizedRequest, *, stream: bool) -> dict[str, object]:
-        system_parts = [message.content for message in request.messages if message.role == "system"]
+        system_parts = [
+            message.content for message in request.messages if message.role == "system"
+        ]
         messages = [
             self._message_payload(message)
             for message in request.messages
