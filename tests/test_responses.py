@@ -27,7 +27,13 @@ def test_parse_responses_item_input() -> None:
 
 def test_render_responses_response() -> None:
     body = render_responses_response(
-        NormalizedResponse(provider="p", model="m", content="answer", input_tokens=2, output_tokens=3)
+        NormalizedResponse(
+            provider="p",
+            model="m",
+            content="answer",
+            input_tokens=2,
+            output_tokens=3,
+        )
     )
     assert body["object"] == "response"
     assert body["status"] == "completed"
