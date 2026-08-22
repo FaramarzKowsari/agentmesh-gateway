@@ -18,7 +18,8 @@
 
 ## v0.2 — Agent compatibility
 
-- [ ] full OpenAI Responses API ingress and streaming lifecycle
+- [x] text-only OpenAI Responses API ingress and core streaming events
+- [ ] full Responses API tools/reasoning/image lifecycle compatibility
 - [ ] complete Anthropic tool-use conversion
 - [ ] Codex CLI compatibility test harness
 - [ ] Claude Code-compatible contract test harness

@@ -7,6 +7,7 @@ A coding client should target one AgentMesh endpoint and continue to work when t
 ## Supported in v0.1
 
 - OpenAI Chat Completions-shaped ingress for text conversations
+- OpenAI Responses-shaped text ingress and basic text streaming lifecycle
 - Anthropic Messages-shaped ingress for text conversations
 - generic OpenAI-compatible upstreams
 - Anthropic Messages upstreams
@@ -18,7 +19,7 @@ A coding client should target one AgentMesh endpoint and continue to work when t
 
 The following are roadmap items and must not be claimed as complete:
 
-- OpenAI Responses API lifecycle compatibility
+- complete OpenAI Responses API lifecycle compatibility beyond text (tools/reasoning/images)
 - cross-vendor tool-call translation
 - image/audio normalization
 - prompt caching semantics

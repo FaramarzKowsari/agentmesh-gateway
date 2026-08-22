@@ -8,7 +8,7 @@ This repository is an original implementation. It does not copy source code, doc
 
 Coding agents increasingly depend on different APIs, quotas, model families, latency profiles, and local runtimes. AgentMesh separates the **client contract** from the **provider contract** and adds a control layer for:
 
-- OpenAI-compatible and Anthropic-compatible ingress
+- OpenAI Chat Completions, text Responses API, and Anthropic-compatible ingress
 - provider plugins and local runtimes
 - automatic fallback and circuit breaking
 - latency-, cost-, and quality-aware routing
@@ -61,7 +61,7 @@ Detailed design: [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
+source .venv/bin/activate  # Windows: .venv\\Scripts\\activate
 pip install -e '.[dev]'
 cp .env.example .env
 agentmesh serve --reload
