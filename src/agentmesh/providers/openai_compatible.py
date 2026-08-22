@@ -7,7 +7,13 @@ from collections.abc import AsyncIterator
 import httpx
 
 from agentmesh.config import ProviderSpec
-from agentmesh.domain import FunctionCall, Message, NormalizedRequest, NormalizedResponse, StreamChunk
+from agentmesh.domain import (
+    FunctionCall,
+    Message,
+    NormalizedRequest,
+    NormalizedResponse,
+    StreamChunk,
+)
 from agentmesh.providers.http_errors import translate_http_error
 
 
