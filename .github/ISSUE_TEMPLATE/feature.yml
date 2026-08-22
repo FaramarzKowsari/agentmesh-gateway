@@ -1,0 +1,24 @@
+name: Feature request
+description: Propose a focused capability
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: use_case
+    attributes:
+      label: Use case
+      description: What workflow becomes possible or better?
+    validations:
+      required: true
+  - type: textarea
+    id: contract
+    attributes:
+      label: Desired contract
+      description: Describe client-visible behavior, not another project's internal implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: List observable conditions that prove the feature works.

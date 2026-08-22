@@ -1,0 +1,35 @@
+name: Bug report
+description: Report reproducible AgentMesh behavior
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What happened and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction
+      description: Provide a minimal reproducible request with secrets removed.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: AgentMesh version
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Python version, client, provider adapter, and model.
+  - type: checkboxes
+    id: secrets
+    attributes:
+      label: Safety
+      options:
+        - label: I removed API keys, tokens, cookies, and private prompts.
+          required: true
