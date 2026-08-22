@@ -5,7 +5,13 @@ from collections.abc import AsyncIterator
 import pytest
 
 from agentmesh.config import ProviderSpec
-from agentmesh.domain import Message, NormalizedRequest, NormalizedResponse, StreamChunk
+from agentmesh.domain import (
+    FunctionCallDelta,
+    Message,
+    NormalizedRequest,
+    NormalizedResponse,
+    StreamChunk,
+)
 from agentmesh.errors import ProviderError
 from agentmesh.gateway.service import GatewayService
 from agentmesh.routing.router import Router
@@ -32,8 +38,20 @@ class StreamProvider:
         if self.behavior == "fail-after":
             yield StreamChunk(provider=self.name, model=request.model, text="partial")
             raise ProviderError("temporary", provider=self.name, retryable=True)
+        if self.behavior == "fail-after-tool":
+            yield StreamChunk(
+                provider=self.name,
+                model=request.model,
+                function_call_delta=FunctionCallDelta(
+                    index=0,
+                    call_id="call_1",
+                    name="lookup",
+                    arguments_delta='{"q":"x"}',
+                ),
+            )
+            raise ProviderError("temporary", provider=self.name, retryable=True)
         yield StreamChunk(provider=self.name, model=request.model, text="ok")
-        yield StreamChunk(provider=self.name, model=request.model, text="", done=True)
+        yield StreamChunk(provider=self.name, model=request.model, done=True)
 
     async def list_models(self) -> list[str]:
         return ["m"]
@@ -92,5 +110,29 @@ async def test_stream_does_not_fallback_after_first_committed_chunk() -> None:
             seen.append(chunk.text)
 
     assert seen == ["partial"]
+    assert first.calls == 1
+    assert second.calls == 0
+
+
+@pytest.mark.asyncio
+async def test_stream_does_not_fallback_after_function_call_delta() -> None:
+    first = StreamProvider("first", "fail-after-tool")
+    second = StreamProvider("second", "ok")
+    service = gateway(first, second)
+
+    seen: list[FunctionCallDelta] = []
+    with pytest.raises(ProviderError):
+        async for chunk in service.stream(request()):
+            if chunk.function_call_delta is not None:
+                seen.append(chunk.function_call_delta)
+
+    assert seen == [
+        FunctionCallDelta(
+            index=0,
+            call_id="call_1",
+            name="lookup",
+            arguments_delta='{"q":"x"}',
+        )
+    ]
     assert first.calls == 1
     assert second.calls == 0
