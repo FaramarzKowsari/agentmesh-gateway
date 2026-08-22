@@ -94,7 +94,11 @@ def response_envelope(
 
 
 def render_responses_response(response: NormalizedResponse) -> dict[str, Any]:
-    response_id = response.raw_id if response.raw_id and response.raw_id.startswith("resp_") else f"resp_{uuid.uuid4().hex}"
+    response_id = (
+        response.raw_id
+        if response.raw_id and response.raw_id.startswith("resp_")
+        else f"resp_{uuid.uuid4().hex}"
+    )
     item_id = f"msg_{uuid.uuid4().hex}"
     output = [
         {
