@@ -24,3 +24,20 @@ def test_gateway_auth() -> None:
     assert client.get("/v1/models").status_code == 401
     response = client.get("/v1/models", headers={"Authorization": "Bearer secret"})
     assert response.status_code == 200
+
+
+def test_request_id_is_preserved_when_supplied() -> None:
+    client = TestClient(create_app(app_settings()))
+    response = client.get("/healthz", headers={"x-request-id": "trace-123"})
+
+    assert response.status_code == 200
+    assert response.headers["x-request-id"] == "trace-123"
+
+
+def test_request_id_is_generated_when_absent() -> None:
+    client = TestClient(create_app(app_settings()))
+    response = client.get("/healthz")
+
+    request_id = response.headers["x-request-id"]
+    assert len(request_id) == 32
+    assert all(character in "0123456789abcdef" for character in request_id)
