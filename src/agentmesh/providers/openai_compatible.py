@@ -9,6 +9,7 @@ import httpx
 from agentmesh.config import ProviderSpec
 from agentmesh.domain import (
     FunctionCall,
+    FunctionCallDelta,
     Message,
     NormalizedRequest,
     NormalizedResponse,
@@ -133,15 +134,31 @@ class OpenAICompatibleProvider:
                         continue
                     body = line[5:].strip()
                     if body == "[DONE]":
-                        yield StreamChunk(provider=self.name, model=model, text="", done=True)
+                        yield StreamChunk(provider=self.name, model=model, done=True)
                         return
                     if not body:
                         continue
                     data = json.loads(body)
-                    delta = data.get("choices", [{}])[0].get("delta", {})
+                    choice = data.get("choices", [{}])[0]
+                    delta = choice.get("delta", {})
                     text = delta.get("content") or ""
                     if text:
                         yield StreamChunk(provider=self.name, model=model, text=str(text))
+                    for call in delta.get("tool_calls") or []:
+                        function = call.get("function") or {}
+                        call_id = call.get("id")
+                        name = function.get("name")
+                        arguments = function.get("arguments") or ""
+                        yield StreamChunk(
+                            provider=self.name,
+                            model=model,
+                            function_call_delta=FunctionCallDelta(
+                                index=int(call.get("index", 0)),
+                                call_id=str(call_id) if call_id is not None else None,
+                                name=str(name) if name is not None else None,
+                                arguments_delta=str(arguments),
+                            ),
+                        )
         except httpx.HTTPError as exc:
             raise translate_http_error(self.name, exc) from exc
 
