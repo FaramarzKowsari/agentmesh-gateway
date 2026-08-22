@@ -9,4 +9,16 @@ ruff check .
 pytest
 ```
 
-The initial bootstrap was locally exercised with the source tree on `PYTHONPATH`; 16 deterministic tests passed. Package installation/lint dependency download could not be reproduced in the isolated build environment because that environment has no outbound package-network access. GitHub Actions performs the full install + lint + test path on published branches and pull requests.
+## Verified baseline
+
+The v0.1 foundation was exercised locally with 16 deterministic tests passing.
+
+GitHub Actions then validated the published codebase on Python 3.11, 3.12, and 3.13. Every matrix job completed successfully with:
+
+- `actions/checkout@v7`
+- `actions/setup-python@v7`
+- editable installation with development dependencies
+- `ruff check .`
+- the full `pytest` suite
+
+No provider API key or paid service is required for these deterministic checks. Live-provider compatibility remains opt-in future validation and must not be conflated with the offline test baseline.
