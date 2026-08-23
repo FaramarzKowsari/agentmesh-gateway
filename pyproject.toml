@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agentmesh-gateway"
-version = "0.2.0"
+version = "0.3.0"
 description = "Independent protocol-aware AI coding-agent and model gateway with policy routing and failover"
 readme = "README.md"
 requires-python = ">=3.11"
