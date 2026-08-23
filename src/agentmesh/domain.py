@@ -96,3 +96,5 @@ class StreamChunk:
     done: bool = False
     function_call_delta: FunctionCallDelta | None = None
     native_responses_event: dict[str, Any] | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
