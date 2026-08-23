@@ -1,0 +1,44 @@
+name: release-v0.3.0
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Verify release inputs
+        run: |
+          test -f RELEASE_NOTES_v0.3.0.md
+          grep -q '__version__ = "0.3.0"' src/agentmesh/__init__.py
+          git cat-file -e a76edac94070dfffc9d5d9d15c6edd4499827fcd^{commit}
+      - name: Create annotated tag if missing
+        run: |
+          if git ls-remote --exit-code --tags origin refs/tags/v0.3.0 >/dev/null 2>&1; then
+            echo "Tag v0.3.0 already exists."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a v0.3.0 a76edac94070dfffc9d5d9d15c6edd4499827fcd -m "AgentMesh Gateway v0.3.0"
+            git push origin v0.3.0
+          fi
+      - name: Create GitHub Release if missing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view v0.3.0 >/dev/null 2>&1; then
+            echo "GitHub Release v0.3.0 already exists."
+          else
+            gh release create v0.3.0 \
+              --verify-tag \
+              --title "AgentMesh Gateway v0.3.0" \
+              --notes-file RELEASE_NOTES_v0.3.0.md
+          fi
