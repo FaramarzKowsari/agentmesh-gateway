@@ -46,7 +46,7 @@ These are intentionally outside the verified v0.2 release surface rather than fa
 
 - [x] observed token-normalized cost accounting with explicit per-million prices
 - [x] bounded latency distribution / p50 / p95 tracking
-- [ ] quota window tracking
+- [x] deterministic local request-quota windows and hard exhaustion gate
 - [x] explicit capability gate for text, tools, reasoning, and native Responses tools
 - [ ] extend capability requirements to vision/context length after the normalized request model supports them
 - [ ] task classifier
