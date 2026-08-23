@@ -1,0 +1,13 @@
+{
+  "name": "AgentMesh Gateway",
+  "version": "0.3.0",
+  "site": "https://faramarzkowsari.github.io/agentmesh-gateway/",
+  "repository": "https://github.com/FaramarzKowsari/agentmesh-gateway",
+  "doi": "10.5281/zenodo.22069468",
+  "languages": ["en", "tr", "es"],
+  "pages": {
+    "en": ["/", "/project.html"],
+    "tr": ["/tr/", "/tr/project.html"],
+    "es": ["/es/", "/es/project.html"]
+  }
+}
