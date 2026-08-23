@@ -21,6 +21,10 @@ class Router:
         self.specs = specs
         self.states = states
         self.policy = policy
+        for spec in specs:
+            self.states.configure_quota(
+                spec.name, spec.request_quota_limit, spec.request_quota_window_seconds
+            )
 
     @staticmethod
     def required_capabilities(request: NormalizedRequest) -> frozenset[Capability]:
@@ -29,24 +33,20 @@ class Router:
             message.tool_calls or message.tool_call_id is not None for message in request.messages
         ):
             required.add("tools")
-
         controls = request.responses
         if controls is None:
             return frozenset(required)
-
         if (
             controls.reasoning is not None
             or _has_reasoning_input(controls.raw_input)
             or any(item.startswith("reasoning.") for item in controls.include)
         ):
             required.add("reasoning")
-
         if any(
             isinstance(tool, dict) and tool.get("type") not in {None, "function"}
             for tool in request.tools
         ):
             required.add("native_responses_tools")
-
         return frozenset(required)
 
     @classmethod
@@ -69,7 +69,6 @@ class Router:
                     )
                 )
             )
-
         if not protocol_supported:
             return False
         return cls.required_capabilities(request).issubset(spec.effective_capabilities())
@@ -79,6 +78,7 @@ class Router:
             spec
             for spec in self.specs
             if self.states.get(spec.name).available()
+            and not self.states.quota_exhausted(spec.name)
             and (request.model == "auto" or request.model in spec.models)
             and self._supports_request(spec, request)
         ]
@@ -93,7 +93,6 @@ class Router:
         cost = min(max(spec.cost_hint, 0.0), 1.0)
         quality_penalty = 1.0 - min(max(spec.quality_hint, 0.0), 1.0)
         weight_penalty = 1.0 / max(spec.weight, 0.01)
-
         if self.policy == "latency":
             return latency_norm * weight_penalty
         if self.policy == "cost":
