@@ -1,0 +1,50 @@
+name: pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Validate static site
+        run: |
+          test -f docs/index.html
+          test -f docs/project.html
+          test -f docs/tr/index.html
+          test -f docs/tr/project.html
+          test -f docs/es/index.html
+          test -f docs/es/project.html
+          test -f docs/assets/site.css
+          test -f docs/assets/agentmesh-hero.svg
+          grep -q 'Faramarz Kowsari' docs/index.html
+          grep -q '10.5281/zenodo.22069468' docs/index.html
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: docs
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
