@@ -24,6 +24,11 @@ All notable changes to AgentMesh Gateway are documented in this file.
 - `agentmesh simulate` with baseline-policy comparison plus JSON/CSV output for analysis tooling.
 - Example simulation fixtures explicitly labeled as mechanics-only rather than benchmark evidence.
 - ADR 0007 documenting fresh-state counterfactual policy replay and missing-observation rules.
+- Deterministic semantic task classification for `text`, `tool`, `reasoning`, and `native_tool` requests.
+- Versioned quality-profile loading with mandatory benchmark ID/version/source/metric and sample counts.
+- Simulation-only `adaptive_balanced` multi-objective policy using evolving latency/cost state, contextual quality priors, and quota pressure.
+- Simulation-only `constrained_ucb` contextual exploration baseline with chosen-only feedback.
+- ADR 0008 defining the quality-evidence contract, adaptive objectives, hard-feasibility boundary, and production non-goal.
 
 ### Compatibility
 
@@ -34,6 +39,7 @@ All notable changes to AgentMesh Gateway are documented in this file.
 - Existing latency and balanced routing behavior remains EWMA-based; adding p50/p95 does not silently change policy objectives.
 - Providers without request-quota configuration behave as before. Configured quota pressure is diagnostic; only exhaustion is a hard feasibility gate.
 - Simulation reuses runtime feasibility/state semantics without contacting provider `base_url` values.
+- Quality profiles and adaptive policies are offline simulation inputs only; production routing policies are unchanged.
 
 ## [0.2.0] - 2026-08-23
 

@@ -3,23 +3,40 @@ from __future__ import annotations
 import csv
 import io
 import json
+import math
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from agentmesh.config import ProviderSpec, RoutingPolicy
 from agentmesh.domain import Message, NormalizedRequest, ReasoningControls, ResponsesControls
+from agentmesh.quality import QualityProfiles, TaskClass, classify_task
 from agentmesh.routing.router import Router
-from agentmesh.routing.state import RuntimeStateStore
+from agentmesh.routing.state import ProviderRuntimeState, RuntimeStateStore
 
-BASELINE_POLICIES: tuple[RoutingPolicy, ...] = (
+SimulationPolicy = Literal[
     "ordered",
     "latency",
     "cost",
     "quality",
     "balanced",
+    "adaptive_balanced",
+    "constrained_ucb",
+]
+STATIC_POLICIES = frozenset({"ordered", "latency", "cost", "quality", "balanced"})
+SIMULATION_POLICIES: tuple[SimulationPolicy, ...] = (
+    "ordered",
+    "latency",
+    "cost",
+    "quality",
+    "balanced",
+    "adaptive_balanced",
+    "constrained_ucb",
 )
+BASELINE_POLICIES: tuple[SimulationPolicy, ...] = SIMULATION_POLICIES[:5]
 REQUIREMENTS = frozenset({"text", "tools", "reasoning", "native_responses_tools"})
+ADAPTIVE_COST_SCALE_USD = 0.01
+UCB_EXPLORATION = 0.15
 
 
 @dataclass(slots=True)
@@ -33,6 +50,16 @@ class SimulationClock:
         if value < self.value:
             raise ValueError("trace at_seconds must be non-decreasing")
         self.value = value
+
+
+@dataclass(slots=True)
+class BanditStat:
+    count: int = 0
+    mean_reward: float = 0.0
+
+    def update(self, reward: float) -> None:
+        self.count += 1
+        self.mean_reward += (reward - self.mean_reward) / self.count
 
 
 def load_provider_specs(path: Path) -> tuple[ProviderSpec, ...]:
@@ -64,14 +91,14 @@ def load_trace(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
-def parse_policies(value: str) -> tuple[RoutingPolicy, ...]:
+def parse_policies(value: str) -> tuple[SimulationPolicy, ...]:
     names = tuple(part.strip() for part in value.split(",") if part.strip())
     if not names:
         raise ValueError("at least one policy is required")
-    unknown = [name for name in names if name not in BASELINE_POLICIES]
+    unknown = [name for name in names if name not in SIMULATION_POLICIES]
     if unknown:
         raise ValueError(f"unsupported simulation policies: {', '.join(unknown)}")
-    return tuple(cast(RoutingPolicy, name) for name in names)
+    return tuple(cast(SimulationPolicy, name) for name in names)
 
 
 def request_from_trace(row: dict[str, Any]) -> NormalizedRequest:
@@ -142,6 +169,139 @@ def _optional_tokens(value: object, field: str) -> int | None:
     return value
 
 
+def _clamp(value: float) -> float:
+    return min(max(value, 0.0), 1.0)
+
+
+def _resolved_model(spec: ProviderSpec, request: NormalizedRequest) -> str:
+    if request.model != "auto" and request.model in spec.models:
+        return request.model
+    return spec.models[0]
+
+
+def _profile_quality(
+    profiles: QualityProfiles | None,
+    spec: ProviderSpec,
+    request: NormalizedRequest,
+    task_class: TaskClass,
+) -> float | None:
+    if profiles is None:
+        return None
+    return profiles.score_for(spec.name, _resolved_model(spec, request), task_class)
+
+
+def _quality_prior(
+    profiles: QualityProfiles | None,
+    spec: ProviderSpec,
+    request: NormalizedRequest,
+    task_class: TaskClass,
+) -> float:
+    profile = _profile_quality(profiles, spec, request, task_class)
+    return _clamp(profile if profile is not None else spec.quality_hint)
+
+
+def _latency_norm(state: ProviderRuntimeState) -> float:
+    latency = state.latency_ewma_ms if state.latency_ewma_ms is not None else 1000.0
+    return _clamp(latency / 5000.0)
+
+
+def _cost_norm(spec: ProviderSpec, state: ProviderRuntimeState) -> float:
+    if state.cost_observations:
+        average_cost = state.cost_total_usd / state.cost_observations
+        return _clamp(average_cost / ADAPTIVE_COST_SCALE_USD)
+    return _clamp(spec.cost_hint)
+
+
+def _quota_pressure(states: RuntimeStateStore, provider: str) -> float:
+    pressure = states.quota_snapshot(provider)["pressure"]
+    return _clamp(float(pressure)) if pressure is not None else 0.0
+
+
+def _adaptive_penalty(
+    spec: ProviderSpec,
+    request: NormalizedRequest,
+    task_class: TaskClass,
+    states: RuntimeStateStore,
+    profiles: QualityProfiles | None,
+) -> float:
+    state = states.get(spec.name)
+    quality_penalty = 1.0 - _quality_prior(profiles, spec, request, task_class)
+    return (
+        0.40 * _latency_norm(state)
+        + 0.25 * _cost_norm(spec, state)
+        + 0.25 * quality_penalty
+        + 0.10 * _quota_pressure(states, spec.name)
+    )
+
+
+def _outcome_reward(
+    *,
+    spec: ProviderSpec,
+    request: NormalizedRequest,
+    task_class: TaskClass,
+    states: RuntimeStateStore,
+    profiles: QualityProfiles | None,
+    latency_ms: float | None,
+    cost_usd: float | None,
+    quality: float | None,
+    success: bool,
+) -> float:
+    if not success:
+        return 0.0
+    quality_value = (
+        quality
+        if quality is not None
+        else _quality_prior(profiles, spec, request, task_class)
+    )
+    latency_value = _clamp((latency_ms if latency_ms is not None else 1000.0) / 5000.0)
+    cost_value = (
+        _clamp(cost_usd / ADAPTIVE_COST_SCALE_USD)
+        if cost_usd is not None
+        else _cost_norm(spec, states.get(spec.name))
+    )
+    penalty = (
+        0.40 * latency_value
+        + 0.25 * cost_value
+        + 0.25 * (1.0 - _clamp(quality_value))
+        + 0.10 * _quota_pressure(states, spec.name)
+    )
+    return 1.0 - penalty
+
+
+def _select_adaptive(
+    candidates: list[ProviderSpec],
+    *,
+    policy: SimulationPolicy,
+    request: NormalizedRequest,
+    task_class: TaskClass,
+    states: RuntimeStateStore,
+    profiles: QualityProfiles | None,
+    bandit: dict[tuple[TaskClass, str], BanditStat],
+) -> tuple[ProviderSpec, float]:
+    if policy == "adaptive_balanced":
+        scored = [
+            (
+                _adaptive_penalty(spec, request, task_class, states, profiles),
+                index,
+                spec,
+            )
+            for index, spec in enumerate(candidates)
+        ]
+        penalty, _, selected = min(scored, key=lambda item: (item[0], item[1]))
+        return selected, penalty
+
+    total = sum(bandit.get((task_class, spec.name), BanditStat()).count for spec in candidates)
+    scored_ucb: list[tuple[float, int, ProviderSpec]] = []
+    for index, spec in enumerate(candidates):
+        stat = bandit.get((task_class, spec.name), BanditStat())
+        prior_reward = 1.0 - _adaptive_penalty(spec, request, task_class, states, profiles)
+        estimate = stat.mean_reward if stat.count else prior_reward
+        bonus = UCB_EXPLORATION * math.sqrt(math.log(total + 2.0) / (stat.count + 1.0))
+        scored_ucb.append((estimate + bonus, index, spec))
+    utility, _, selected = max(scored_ucb, key=lambda item: (item[0], -item[1]))
+    return selected, utility
+
+
 def _summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
     successes = [row for row in rows if row["status"] == "success"]
     known_costs = [float(row["cost_usd"]) for row in successes if row["cost_usd"] is not None]
@@ -161,52 +321,96 @@ def _summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _empty_row(
+    *,
+    request_id: str,
+    at_seconds: float,
+    task_class: TaskClass,
+    provider: str | None,
+    status: str,
+    profile_quality: float | None,
+    selection_value: float | None,
+    quota_pressure: object = None,
+) -> dict[str, Any]:
+    return {
+        "request_id": request_id,
+        "at_seconds": at_seconds,
+        "task_class": task_class,
+        "provider": provider,
+        "status": status,
+        "latency_ms": None,
+        "cost_usd": None,
+        "quality": None,
+        "profile_quality": profile_quality,
+        "selection_value": selection_value,
+        "quota_pressure": quota_pressure,
+    }
+
+
 def simulate_policy(
     specs: tuple[ProviderSpec, ...],
     trace: list[dict[str, Any]],
-    policy: RoutingPolicy,
+    policy: SimulationPolicy,
+    profiles: QualityProfiles | None = None,
 ) -> dict[str, Any]:
     clock = SimulationClock()
     states = RuntimeStateStore([spec.name for spec in specs], clock=clock)
-    router = Router(specs, states, policy)
+    router_policy = cast(RoutingPolicy, policy) if policy in STATIC_POLICIES else "ordered"
+    router = Router(specs, states, router_policy)
+    bandit: dict[tuple[TaskClass, str], BanditStat] = {}
     rows: list[dict[str, Any]] = []
 
     for index, item in enumerate(trace):
         at_seconds = _nonnegative_float(item.get("at_seconds", index), "at_seconds")
         clock.set(at_seconds)
         request = request_from_trace(item)
+        task_class = classify_task(request)
         ranked = router.rank(request)
         request_id = str(item.get("id", f"request-{index + 1}"))
         if not ranked:
             rows.append(
-                {
-                    "request_id": request_id,
-                    "at_seconds": at_seconds,
-                    "provider": None,
-                    "status": "no_provider",
-                    "latency_ms": None,
-                    "cost_usd": None,
-                    "quality": None,
-                    "quota_pressure": None,
-                }
+                _empty_row(
+                    request_id=request_id,
+                    at_seconds=at_seconds,
+                    task_class=task_class,
+                    provider=None,
+                    status="no_provider",
+                    profile_quality=None,
+                    selection_value=None,
+                )
             )
             continue
 
-        spec = ranked[0]
+        selection_value: float | None = None
+        if policy in {"adaptive_balanced", "constrained_ucb"}:
+            spec, selection_value = _select_adaptive(
+                ranked,
+                policy=policy,
+                request=request,
+                task_class=task_class,
+                states=states,
+                profiles=profiles,
+                bandit=bandit,
+            )
+        else:
+            spec = ranked[0]
+
+        profile_quality = _profile_quality(profiles, spec, request, task_class)
         states.record_attempt(spec.name)
         outcomes = item.get("outcomes")
+        quota_pressure = states.quota_snapshot(spec.name)["pressure"]
         if not isinstance(outcomes, dict) or not isinstance(outcomes.get(spec.name), dict):
             rows.append(
-                {
-                    "request_id": request_id,
-                    "at_seconds": at_seconds,
-                    "provider": spec.name,
-                    "status": "missing_outcome",
-                    "latency_ms": None,
-                    "cost_usd": None,
-                    "quality": None,
-                    "quota_pressure": states.quota_snapshot(spec.name)["pressure"],
-                }
+                _empty_row(
+                    request_id=request_id,
+                    at_seconds=at_seconds,
+                    task_class=task_class,
+                    provider=spec.name,
+                    status="missing_outcome",
+                    profile_quality=profile_quality,
+                    selection_value=selection_value,
+                    quota_pressure=quota_pressure,
+                )
             )
             continue
 
@@ -221,17 +425,19 @@ def simulate_policy(
                 threshold=1_000_000_000,
                 cooldown_seconds=0,
             )
+            if policy == "constrained_ucb":
+                bandit.setdefault((task_class, spec.name), BanditStat()).update(0.0)
             rows.append(
-                {
-                    "request_id": request_id,
-                    "at_seconds": at_seconds,
-                    "provider": spec.name,
-                    "status": "provider_failure",
-                    "latency_ms": None,
-                    "cost_usd": None,
-                    "quality": None,
-                    "quota_pressure": states.quota_snapshot(spec.name)["pressure"],
-                }
+                _empty_row(
+                    request_id=request_id,
+                    at_seconds=at_seconds,
+                    task_class=task_class,
+                    provider=spec.name,
+                    status="provider_failure",
+                    profile_quality=profile_quality,
+                    selection_value=selection_value,
+                    quota_pressure=quota_pressure,
+                )
             )
             continue
 
@@ -247,31 +453,62 @@ def simulate_policy(
             output_tokens=output_tokens,
             cost_usd=cost_usd,
         )
+        if policy == "constrained_ucb":
+            reward = _outcome_reward(
+                spec=spec,
+                request=request,
+                task_class=task_class,
+                states=states,
+                profiles=profiles,
+                latency_ms=latency_ms,
+                cost_usd=cost_usd,
+                quality=quality,
+                success=True,
+            )
+            bandit.setdefault((task_class, spec.name), BanditStat()).update(reward)
         rows.append(
             {
                 "request_id": request_id,
                 "at_seconds": at_seconds,
+                "task_class": task_class,
                 "provider": spec.name,
                 "status": "success",
                 "latency_ms": latency_ms,
                 "cost_usd": cost_usd,
                 "quality": quality,
+                "profile_quality": profile_quality,
+                "selection_value": selection_value,
                 "quota_pressure": states.quota_snapshot(spec.name)["pressure"],
             }
         )
 
-    return {"policy": policy, "summary": _summary(rows), "rows": rows}
+    result: dict[str, Any] = {"policy": policy, "summary": _summary(rows), "rows": rows}
+    if policy == "constrained_ucb":
+        result["bandit"] = {
+            f"{task}:{provider}": {"count": stat.count, "mean_reward": stat.mean_reward}
+            for (task, provider), stat in sorted(bandit.items())
+        }
+    return result
 
 
 def simulate(
     specs: tuple[ProviderSpec, ...],
     trace: list[dict[str, Any]],
-    policies: tuple[RoutingPolicy, ...] = BASELINE_POLICIES,
+    policies: tuple[SimulationPolicy, ...] = BASELINE_POLICIES,
+    profiles: QualityProfiles | None = None,
 ) -> dict[str, Any]:
-    return {
-        "schema_version": 1,
-        "policies": [simulate_policy(specs, trace, policy) for policy in policies],
+    result: dict[str, Any] = {
+        "schema_version": 2,
+        "policies": [simulate_policy(specs, trace, policy, profiles) for policy in policies],
     }
+    if profiles is not None:
+        result["quality_profile"] = {
+            "benchmark_id": profiles.benchmark_id,
+            "benchmark_version": profiles.benchmark_version,
+            "source": profiles.source,
+            "metric": profiles.metric,
+        }
+    return result
 
 
 def render_json(result: dict[str, Any]) -> str:
@@ -284,11 +521,14 @@ def render_csv(result: dict[str, Any]) -> str:
         "policy",
         "request_id",
         "at_seconds",
+        "task_class",
         "provider",
         "status",
         "latency_ms",
         "cost_usd",
         "quality",
+        "profile_quality",
+        "selection_value",
         "quota_pressure",
     ]
     writer = csv.DictWriter(buffer, fieldnames=fieldnames, lineterminator="\n")

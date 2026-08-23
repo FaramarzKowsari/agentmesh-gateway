@@ -6,6 +6,7 @@ import typer
 import uvicorn
 
 from agentmesh import simulation
+from agentmesh.quality import load_quality_profiles
 
 app = typer.Typer(no_args_is_help=True, help="AgentMesh Gateway CLI")
 
@@ -34,7 +35,13 @@ def simulate(
     trace: Path = typer.Option(..., exists=True, readable=True, help="Request trace JSONL file"),
     policies: str = typer.Option(
         "ordered,latency,cost,quality,balanced",
-        help="Comma-separated baseline policies",
+        help="Comma-separated simulation policies",
+    ),
+    quality_profiles: Path | None = typer.Option(
+        None,
+        exists=True,
+        readable=True,
+        help="Optional provenance-checked quality-profile JSON",
     ),
     output: Path | None = typer.Option(None, help="Optional output path"),
     format: str = typer.Option("json", help="Output format: json or csv"),
@@ -44,7 +51,8 @@ def simulate(
         specs = simulation.load_provider_specs(providers)
         rows = simulation.load_trace(trace)
         selected_policies = simulation.parse_policies(policies)
-        result = simulation.simulate(specs, rows, selected_policies)
+        profiles = load_quality_profiles(quality_profiles) if quality_profiles is not None else None
+        result = simulation.simulate(specs, rows, selected_policies, profiles)
         if format == "json":
             rendered = simulation.render_json(result)
         elif format == "csv":
