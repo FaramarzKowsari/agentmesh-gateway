@@ -47,6 +47,12 @@ def _optional_nonnegative_float(value: object, field_name: str) -> float | None:
     return parsed
 
 
+def _valid_token_count(value: object) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return None
+    return value
+
+
 @dataclass(slots=True, frozen=True)
 class ProviderSpec:
     name: str
@@ -82,15 +88,15 @@ class ProviderSpec:
         input_tokens: int | None,
         output_tokens: int | None,
     ) -> float | None:
-        if input_tokens is None or output_tokens is None:
-            return None
-        if input_tokens < 0 or output_tokens < 0:
+        valid_input = _valid_token_count(input_tokens)
+        valid_output = _valid_token_count(output_tokens)
+        if valid_input is None or valid_output is None:
             return None
         if self.input_cost_per_million is None or self.output_cost_per_million is None:
             return None
         return (
-            input_tokens * self.input_cost_per_million
-            + output_tokens * self.output_cost_per_million
+            valid_input * self.input_cost_per_million
+            + valid_output * self.output_cost_per_million
         ) / 1_000_000
 
     @classmethod
