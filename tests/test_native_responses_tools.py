@@ -7,9 +7,9 @@ import pytest
 
 from agentmesh.api.app import create_app
 from agentmesh.config import ProviderSpec, Settings
+from agentmesh.protocols.responses_validation import SUPPORTED_TOOL_TYPES
 from agentmesh.providers.openai_compatible import OpenAICompatibleProvider
 from agentmesh.providers.openai_responses import OpenAIResponsesProvider
-from agentmesh.protocols.responses_validation import SUPPORTED_TOOL_TYPES
 
 
 @pytest.mark.parametrize(
