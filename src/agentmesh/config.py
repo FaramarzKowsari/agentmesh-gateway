@@ -103,7 +103,11 @@ class ProviderSpec:
             return frozenset({"text", "tools", "reasoning", "native_responses_tools"})
         return frozenset({"text", "tools"})
 
-    def observed_cost_usd(self, input_tokens: int | None, output_tokens: int | None) -> float | None:
+    def observed_cost_usd(
+        self,
+        input_tokens: int | None,
+        output_tokens: int | None,
+    ) -> float | None:
         valid_input = _valid_token_count(input_tokens)
         valid_output = _valid_token_count(output_tokens)
         if valid_input is None or valid_output is None:
