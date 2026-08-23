@@ -6,6 +6,10 @@ on:
     paths:
       - "docs/**"
       - ".github/workflows/pages.yml"
+  pull_request:
+    paths:
+      - "docs/**"
+      - ".github/workflows/pages.yml"
   workflow_dispatch:
 
 permissions:
@@ -14,14 +18,11 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
+  group: pages-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -37,6 +38,21 @@ jobs:
           test -f docs/assets/agentmesh-hero.svg
           grep -q 'Faramarz Kowsari' docs/index.html
           grep -q '10.5281/zenodo.22069468' docs/index.html
+          grep -q 'Faramarz Kowsari' docs/tr/index.html
+          grep -q 'Faramarz Kowsari' docs/es/index.html
+          grep -q 'project.html' docs/index.html
+          grep -q 'project.html' docs/tr/index.html
+          grep -q 'project.html' docs/es/index.html
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: validate
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
         with:
