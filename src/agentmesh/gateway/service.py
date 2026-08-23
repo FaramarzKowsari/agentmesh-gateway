@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 from collections.abc import AsyncIterator
 
+from agentmesh.config import ProviderSpec
 from agentmesh.domain import NormalizedRequest, NormalizedResponse, StreamChunk
 from agentmesh.errors import NoProviderAvailable, ProviderError
 from agentmesh.providers.registry import ProviderRegistry
@@ -32,6 +33,19 @@ class GatewayService:
         if not self.router.rank(request):
             raise NoProviderAvailable("no provider is currently eligible for this request")
 
+    def _record_usage(
+        self,
+        spec: ProviderSpec,
+        input_tokens: int | None,
+        output_tokens: int | None,
+    ) -> None:
+        self.states.record_usage(
+            spec.name,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_usd=spec.observed_cost_usd(input_tokens, output_tokens),
+        )
+
     async def complete(self, request: NormalizedRequest) -> NormalizedResponse:
         candidates = self.router.rank(request)
         if not candidates:
@@ -56,6 +70,7 @@ class GatewayService:
                 continue
             latency_ms = (time.perf_counter() - started) * 1000
             self.states.record_success(spec.name, latency_ms)
+            self._record_usage(spec, response.input_tokens, response.output_tokens)
             return response
 
         if last_error is not None:
@@ -72,12 +87,25 @@ class GatewayService:
             provider = self.registry.get(spec.name)
             started = time.perf_counter()
             committed = False
+            observed_input_tokens: int | None = None
+            observed_output_tokens: int | None = None
             try:
                 async for chunk in provider.stream(request):
-                    committed = True
+                    if chunk.input_tokens is not None:
+                        observed_input_tokens = chunk.input_tokens
+                    if chunk.output_tokens is not None:
+                        observed_output_tokens = chunk.output_tokens
+                    if (
+                        chunk.text
+                        or chunk.done
+                        or chunk.function_call_delta is not None
+                        or chunk.native_responses_event is not None
+                    ):
+                        committed = True
                     yield chunk
                 latency_ms = (time.perf_counter() - started) * 1000
                 self.states.record_success(spec.name, latency_ms)
+                self._record_usage(spec, observed_input_tokens, observed_output_tokens)
                 return
             except ProviderError as exc:
                 last_error = exc
