@@ -17,6 +17,9 @@ All notable changes to AgentMesh Gateway are documented in this file.
 - Bounded recent-success latency windows with deterministic nearest-rank p50/p95 diagnostics.
 - Configurable latency sample windows for deterministic tests and future policy simulation.
 - ADR 0005 documenting why latency distribution evidence remains separate from the current EWMA routing signal.
+- Optional deterministic local request-quota windows with hard exhaustion filtering before policy scoring.
+- Quota diagnostics for used/remaining attempts, pressure, exhaustion, and reset interval.
+- ADR 0006 defining outbound-attempt counting and the distinction between local quota control and vendor-side rate limits.
 
 ### Compatibility
 
@@ -25,6 +28,7 @@ All notable changes to AgentMesh Gateway are documented in this file.
 - Existing `cost_hint` routing behavior is unchanged; token prices and observed USD costs do not silently change routing scores.
 - Missing token usage or missing token prices remain unobserved rather than being treated as zero cost.
 - Existing latency and balanced routing behavior remains EWMA-based; adding p50/p95 does not silently change policy objectives.
+- Providers without request-quota configuration behave as before. Configured quota pressure is diagnostic; only exhaustion is a hard feasibility gate.
 
 ## [0.2.0] - 2026-08-23
 

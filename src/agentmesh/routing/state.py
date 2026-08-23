@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import time
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 DEFAULT_LATENCY_SAMPLE_WINDOW = 128
@@ -40,9 +41,12 @@ class ProviderRuntimeState:
     last_cost_usd: float | None = None
     latency_window_size: int = DEFAULT_LATENCY_SAMPLE_WINDOW
     latency_samples_ms: deque[float] = field(
-        default_factory=lambda: deque(maxlen=DEFAULT_LATENCY_SAMPLE_WINDOW),
-        repr=False,
+        default_factory=lambda: deque(maxlen=DEFAULT_LATENCY_SAMPLE_WINDOW), repr=False
     )
+    quota_limit: int | None = None
+    quota_window_seconds: float | None = None
+    quota_window_started_at: float | None = None
+    quota_attempts: int = 0
 
     @property
     def latency_sample_count(self) -> int:
@@ -66,9 +70,11 @@ class RuntimeStateStore:
         provider_names: list[str],
         *,
         latency_sample_window: int = DEFAULT_LATENCY_SAMPLE_WINDOW,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         if latency_sample_window < 1:
             raise ValueError("latency_sample_window must be at least 1")
+        self._clock = clock
         self._states = {
             name: ProviderRuntimeState(
                 latency_window_size=latency_sample_window,
@@ -82,6 +88,67 @@ class RuntimeStateStore:
 
     def snapshot(self) -> dict[str, ProviderRuntimeState]:
         return self._states.copy()
+
+    def configure_quota(self, name: str, limit: int | None, window_seconds: float | None) -> None:
+        state = self._states[name]
+        state.quota_limit = limit
+        state.quota_window_seconds = window_seconds
+        state.quota_window_started_at = None
+        state.quota_attempts = 0
+
+    def _refresh_quota(self, state: ProviderRuntimeState) -> None:
+        if state.quota_limit is None or state.quota_window_seconds is None:
+            return
+        now = self._clock()
+        if state.quota_window_started_at is None:
+            return
+        if now - state.quota_window_started_at >= state.quota_window_seconds:
+            state.quota_window_started_at = None
+            state.quota_attempts = 0
+
+    def record_attempt(self, name: str) -> None:
+        state = self._states[name]
+        self._refresh_quota(state)
+        if state.quota_limit is None or state.quota_window_seconds is None:
+            return
+        if state.quota_window_started_at is None:
+            state.quota_window_started_at = self._clock()
+        state.quota_attempts += 1
+
+    def quota_exhausted(self, name: str) -> bool:
+        state = self._states[name]
+        self._refresh_quota(state)
+        return state.quota_limit is not None and state.quota_attempts >= state.quota_limit
+
+    def quota_snapshot(self, name: str) -> dict[str, object]:
+        state = self._states[name]
+        self._refresh_quota(state)
+        if state.quota_limit is None or state.quota_window_seconds is None:
+            return {
+                "configured": False,
+                "limit": None,
+                "window_seconds": None,
+                "used": 0,
+                "remaining": None,
+                "pressure": None,
+                "exhausted": False,
+                "resets_in_seconds": None,
+            }
+        remaining = max(state.quota_limit - state.quota_attempts, 0)
+        resets_in = None
+        if state.quota_window_started_at is not None:
+            elapsed = self._clock() - state.quota_window_started_at
+            resets_in = max(state.quota_window_seconds - elapsed, 0.0)
+        return {
+            "configured": True,
+            "limit": state.quota_limit,
+            "window_seconds": state.quota_window_seconds,
+            "used": state.quota_attempts,
+            "remaining": remaining,
+            "pressure": state.quota_attempts / state.quota_limit,
+            "exhausted": state.quota_attempts >= state.quota_limit,
+            "resets_in_seconds": resets_in,
+        }
 
     def record_success(self, name: str, latency_ms: float) -> None:
         state = self._states[name]
@@ -110,7 +177,6 @@ class RuntimeStateStore:
         valid_output = _valid_token_count(output_tokens)
         if valid_input is None and valid_output is None:
             return
-
         state = self._states[name]
         state.token_usage_observations += 1
         state.last_input_tokens = valid_input
@@ -119,7 +185,6 @@ class RuntimeStateStore:
             state.input_tokens_total += valid_input
         if valid_output is not None:
             state.output_tokens_total += valid_output
-
         if isinstance(cost_usd, (int, float)) and not isinstance(cost_usd, bool) and cost_usd >= 0:
             state.cost_total_usd += float(cost_usd)
             state.cost_observations += 1

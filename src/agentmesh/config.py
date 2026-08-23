@@ -11,14 +11,7 @@ AdapterName = Literal["openai", "anthropic", "responses"]
 RoutingPolicy = Literal["balanced", "latency", "cost", "quality", "ordered"]
 Capability = Literal["text", "tools", "reasoning", "native_responses_tools"]
 
-KNOWN_CAPABILITIES = frozenset(
-    {
-        "text",
-        "tools",
-        "reasoning",
-        "native_responses_tools",
-    }
-)
+KNOWN_CAPABILITIES = frozenset({"text", "tools", "reasoning", "native_responses_tools"})
 
 
 def _parse_capabilities(value: object) -> tuple[Capability, ...] | None:
@@ -26,7 +19,6 @@ def _parse_capabilities(value: object) -> tuple[Capability, ...] | None:
         return None
     if not isinstance(value, list):
         raise ValueError("capabilities must be a list")
-
     capabilities: list[Capability] = []
     for raw in value:
         capability = str(raw)
@@ -44,6 +36,26 @@ def _optional_nonnegative_float(value: object, field_name: str) -> float | None:
     parsed = float(value)
     if parsed < 0:
         raise ValueError(f"{field_name} must be non-negative")
+    return parsed
+
+
+def _optional_positive_int(value: object, field_name: str) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        raise ValueError(f"{field_name} must be a positive integer")
+    parsed = int(value)
+    if parsed <= 0 or parsed != float(value):
+        raise ValueError(f"{field_name} must be a positive integer")
+    return parsed
+
+
+def _optional_positive_float(value: object, field_name: str) -> float | None:
+    if value is None:
+        return None
+    parsed = float(value)
+    if parsed <= 0:
+        raise ValueError(f"{field_name} must be positive")
     return parsed
 
 
@@ -67,6 +79,8 @@ class ProviderSpec:
     capabilities: tuple[Capability, ...] | None = None
     input_cost_per_million: float | None = None
     output_cost_per_million: float | None = None
+    request_quota_limit: int | None = None
+    request_quota_window_seconds: float | None = None
 
     def __post_init__(self) -> None:
         for field_name, value in (
@@ -75,6 +89,12 @@ class ProviderSpec:
         ):
             if value is not None and value < 0:
                 raise ValueError(f"{field_name} must be non-negative")
+        if (self.request_quota_limit is None) != (self.request_quota_window_seconds is None):
+            raise ValueError("request quota limit and window must be configured together")
+        if self.request_quota_limit is not None and self.request_quota_limit <= 0:
+            raise ValueError("request_quota_limit must be positive")
+        if self.request_quota_window_seconds is not None and self.request_quota_window_seconds <= 0:
+            raise ValueError("request_quota_window_seconds must be positive")
 
     def effective_capabilities(self) -> frozenset[Capability]:
         if self.capabilities is not None:
@@ -108,9 +128,15 @@ class ProviderSpec:
             adapter = str(data.get("adapter", "openai"))
             if adapter not in {"openai", "anthropic", "responses"}:
                 raise ValueError(f"unsupported adapter: {adapter}")
+            limit = _optional_positive_int(data.get("request_quota_limit"), "request_quota_limit")
+            window = _optional_positive_float(
+                data.get("request_quota_window_seconds"), "request_quota_window_seconds"
+            )
+            if (limit is None) != (window is None):
+                raise ValueError("request quota limit and window must be configured together")
             return cls(
                 name=str(data["name"]),
-                adapter=adapter,  # type: ignore[arg-type]
+                adapter=cast(AdapterName, adapter),
                 base_url=str(data["base_url"]).rstrip("/"),
                 models=models,
                 api_key_env=str(data["api_key_env"]) if data.get("api_key_env") else None,
@@ -120,13 +146,13 @@ class ProviderSpec:
                 timeout_seconds=float(data.get("timeout_seconds", 120.0)),
                 capabilities=_parse_capabilities(data.get("capabilities")),
                 input_cost_per_million=_optional_nonnegative_float(
-                    data.get("input_cost_per_million"),
-                    "input_cost_per_million",
+                    data.get("input_cost_per_million"), "input_cost_per_million"
                 ),
                 output_cost_per_million=_optional_nonnegative_float(
-                    data.get("output_cost_per_million"),
-                    "output_cost_per_million",
+                    data.get("output_cost_per_million"), "output_cost_per_million"
                 ),
+                request_quota_limit=limit,
+                request_quota_window_seconds=window,
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise ConfigurationError(f"invalid provider specification: {exc}") from exc
@@ -173,7 +199,7 @@ class Settings:
         return cls(
             host=os.getenv("AGENTMESH_HOST", "127.0.0.1"),
             port=int(os.getenv("AGENTMESH_PORT", "8787")),
-            routing_policy=policy,  # type: ignore[arg-type]
+            routing_policy=cast(RoutingPolicy, policy),
             max_attempts=max(1, int(os.getenv("AGENTMESH_MAX_ATTEMPTS", "3"))),
             failure_threshold=max(1, int(os.getenv("AGENTMESH_FAILURE_THRESHOLD", "3"))),
             cooldown_seconds=max(0.0, float(os.getenv("AGENTMESH_COOLDOWN_SECONDS", "30"))),
