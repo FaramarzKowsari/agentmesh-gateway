@@ -7,6 +7,29 @@ from agentmesh.errors import ClientRequestError
 SUPPORTED_ITEM_TYPES = {"message", "function_call", "function_call_output", "reasoning"}
 SUPPORTED_MESSAGE_PART_TYPES = {"input_text", "output_text", "text"}
 
+# Grounded in openai-python Responses ToolParam at commit
+# e43b422412a9e96c9cc5192c61fffbe2d7e04836. Only `function` is translated
+# across protocols; every other recognized type is native-Responses-only.
+SUPPORTED_TOOL_TYPES = {
+    "function",
+    "file_search",
+    "computer",
+    "computer_use_preview",
+    "web_search",
+    "web_search_2025_08_26",
+    "mcp",
+    "code_interpreter",
+    "programmatic_tool_calling",
+    "image_generation",
+    "local_shell",
+    "shell",
+    "custom",
+    "namespace",
+    "tool_search",
+    "web_search_preview",
+    "apply_patch",
+}
+
 
 def _unsupported(feature: str, description: str) -> ClientRequestError:
     return ClientRequestError(
@@ -80,13 +103,15 @@ def _validate_tools(tools: object) -> None:
         if not isinstance(tool, dict):
             raise ClientRequestError("Responses tool definitions must be objects")
         tool_type = tool.get("type")
-        if tool_type != "function":
+        if tool_type not in SUPPORTED_TOOL_TYPES:
             feature = f"responses.tool.{tool_type or 'unknown'}"
             raise _unsupported(
                 feature,
                 f"Responses tool type '{tool_type}' is not supported by AgentMesh",
             )
-        if not tool.get("name") and not isinstance(tool.get("function"), dict):
+        if tool_type == "function" and not tool.get("name") and not isinstance(
+            tool.get("function"), dict
+        ):
             raise ClientRequestError("Responses function tools require a function name")
 
 
