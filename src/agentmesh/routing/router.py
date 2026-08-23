@@ -23,17 +23,18 @@ class Router:
             return spec.adapter != "responses"
         if controls.requires_native and spec.adapter != "responses":
             return False
-        if spec.adapter == "anthropic" and any(
-            (
-                controls.prompt_cache_key is not None,
-                controls.service_tier is not None,
-                controls.tool_choice is not None,
-                controls.parallel_tool_calls is not None,
-                controls.store is not None,
+        return not (
+            spec.adapter == "anthropic"
+            and any(
+                (
+                    controls.prompt_cache_key is not None,
+                    controls.service_tier is not None,
+                    controls.tool_choice is not None,
+                    controls.parallel_tool_calls is not None,
+                    controls.store is not None,
+                )
             )
-        ):
-            return False
-        return True
+        )
 
     def rank(self, request: NormalizedRequest) -> list[ProviderSpec]:
         candidates = [
