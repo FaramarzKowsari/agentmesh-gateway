@@ -54,6 +54,7 @@ class GatewayService:
         last_error: ProviderError | None = None
         for spec in candidates[: self.max_attempts]:
             provider = self.registry.get(spec.name)
+            self.states.record_attempt(spec.name)
             started = time.perf_counter()
             try:
                 response = await provider.complete(request)
@@ -85,6 +86,7 @@ class GatewayService:
         last_error: ProviderError | None = None
         for spec in candidates[: self.max_attempts]:
             provider = self.registry.get(spec.name)
+            self.states.record_attempt(spec.name)
             started = time.perf_counter()
             committed = False
             observed_input_tokens: int | None = None
