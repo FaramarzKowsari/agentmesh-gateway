@@ -31,6 +31,12 @@ def _has_native_input_item(value: object) -> bool:
     return any(isinstance(item, dict) and item.get("type") == "reasoning" for item in value)
 
 
+def _has_native_tool(value: object) -> bool:
+    if not isinstance(value, list):
+        return False
+    return any(isinstance(tool, dict) and tool.get("type") != "function" for tool in value)
+
+
 def attach_responses_controls(
     request: NormalizedRequest,
     payload: dict[str, Any],
@@ -63,6 +69,7 @@ def attach_responses_controls(
             isinstance(parallel_tool_calls, bool),
             isinstance(store, bool),
             _has_native_input_item(payload.get("input")),
+            _has_native_tool(payload.get("tools")),
         )
     )
 

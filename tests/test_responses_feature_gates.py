@@ -101,7 +101,7 @@ async def test_rejects_unsupported_image_content_part() -> None:
 
 
 @pytest.mark.asyncio
-async def test_rejects_unsupported_builtin_tool() -> None:
+async def test_recognized_builtin_tool_requires_native_responses_provider() -> None:
     response = await post(
         {
             "model": "m",
@@ -110,10 +110,26 @@ async def test_rejects_unsupported_builtin_tool() -> None:
         }
     )
 
+    assert response.status_code == 503
+    assert response.json()["error"]["message"] == (
+        "no provider is currently eligible for this request"
+    )
+
+
+@pytest.mark.asyncio
+async def test_rejects_unknown_tool_type() -> None:
+    response = await post(
+        {
+            "model": "m",
+            "input": "do something",
+            "tools": [{"type": "future_unknown_tool"}],
+        }
+    )
+
     assert response.status_code == 400
     error = response.json()["error"]
     assert error["code"] == "unsupported_feature"
-    assert error["feature"] == "responses.tool.web_search_preview"
+    assert error["feature"] == "responses.tool.future_unknown_tool"
 
 
 @pytest.mark.asyncio

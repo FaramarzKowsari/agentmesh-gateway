@@ -40,14 +40,20 @@ A coding client should target one AgentMesh endpoint and continue to work when t
   - `tool_choice`, `parallel_tool_calls`, and `store`
 - native Responses SSE passthrough so reasoning items and encrypted reasoning content are not
   flattened into text or discarded
+- native Responses tool-definition preservation for the current public SDK tool-type union,
+  including web/file search, computer use, MCP, code interpreter, local/sandbox shell,
+  apply-patch, tool-search, namespace/custom tools, and related native types
+- native built-in-tool SSE passthrough: tool lifecycle events are preserved at `/v1/responses`
+  rather than translated into invented custom-function events
 
 ## Explicitly incomplete
 
 The following are roadmap items and must not be claimed as complete:
 
 - cross-vendor reasoning translation between Responses, Chat Completions, and Anthropic thinking
-- built-in OpenAI tool semantics such as web search, file search, computer use, or code interpreter
-- image/audio normalization
+- cross-vendor translation of native Responses built-in tools into other provider tool systems
+- local execution of provider-native built-in tools by AgentMesh itself
+- image/audio input normalization across protocols
 - websocket sampling
 - cross-vendor prompt caching semantics
 - batch APIs
@@ -60,6 +66,10 @@ The following are roadmap items and must not be claimed as complete:
 If a Responses request contains semantics that AgentMesh cannot translate losslessly, only a native
 `responses` provider is eligible. The gateway must return that no eligible provider is available
 rather than silently sending a downgraded request to another adapter.
+
+Recognized native Responses tools follow the same rule: `function` remains cross-protocol
+translatable, while other recognized Responses tool types require a native Responses provider.
+Unknown tool types are rejected as client errors before provider execution.
 
 ## Compatibility principle
 
