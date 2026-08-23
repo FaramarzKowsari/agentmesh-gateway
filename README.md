@@ -27,6 +27,19 @@ The v0.2 line turns the v0.1 routing foundation into a tested agent-protocol gat
 
 AgentMesh deliberately distinguishes **translated compatibility** from **native preservation**. If a request contains semantics that cannot be translated without loss, only a native `responses` provider is eligible. The gateway returns a clear error instead of manufacturing an equivalent-looking request.
 
+## Adaptive routing work on `main`
+
+The v0.3 router work starts with explicit provider capability constraints. Routing now separates **feasibility** from **optimization**: a provider must satisfy protocol, model, health, and capability requirements before latency/cost/quality scoring can rank it.
+
+The initial declared capability vocabulary is intentionally limited to behavior AgentMesh can currently derive from a normalized request:
+
+- `text`
+- `tools`
+- `reasoning`
+- `native_responses_tools`
+
+This is a hard gate, not a score hint. For example, a provider explicitly configured with only `text` cannot win a custom-tool request even if it is the cheapest provider.
+
 ## What v0.2.0 does not claim
 
 This is not a claim of full OpenAI Responses or full Codex compatibility. v0.2.0 does **not** claim:
@@ -55,14 +68,14 @@ Coding clients / IDEs / services
               |
               v
 +----------------------------------+
-| Normalization + capability gates |
-| auth | request IDs | validation  |
+| Normalization + feasibility      |
+| protocol | model | capabilities  |
 +----------------------------------+
               |
               v
 +----------------------------------+
 | Policy router + execution engine |
-| health | fallback | circuits     |
+| health | score | fallback        |
 +----------------------------------+
               |
               v
@@ -73,7 +86,7 @@ Coding clients / IDEs / services
 +----------------------------------+
 ```
 
-Detailed design: [ARCHITECTURE.md](ARCHITECTURE.md).
+Detailed design: [ARCHITECTURE.md](ARCHITECTURE.md). Capability routing is recorded in [ADR 0003](docs/adr/0003-capability-aware-routing.md).
 
 ## Quick start: local Ollama, no paid API key
 
@@ -123,15 +136,16 @@ Three adapter types are available:
 | `anthropic` | Anthropic Messages | Anthropic-compatible providers |
 | `responses` | OpenAI Responses-compatible | lossless Responses-specific semantics |
 
-Example:
+Example with explicit capability restrictions:
 
 ```bash
 export AGENTMESH_PROVIDERS_JSON='[
   {
-    "name": "local",
+    "name": "local-text",
     "adapter": "openai",
     "base_url": "http://127.0.0.1:11434/v1",
     "models": ["qwen2.5-coder:7b"],
+    "capabilities": ["text"],
     "cost_hint": 0.0,
     "quality_hint": 0.6
   },
@@ -141,6 +155,7 @@ export AGENTMESH_PROVIDERS_JSON='[
     "base_url": "https://api.example.com/v1",
     "api_key_env": "RESPONSES_API_KEY",
     "models": ["model-with-responses-support"],
+    "capabilities": ["text", "tools", "reasoning", "native_responses_tools"],
     "cost_hint": 0.5,
     "quality_hint": 0.9
   }
@@ -149,6 +164,20 @@ export AGENTMESH_PROVIDERS_JSON='[
 
 Routing policies are `balanced`, `latency`, `cost`, `quality`, and `ordered`.
 
+### Capability defaults and restrictions
+
+`capabilities` is optional for backward compatibility. If it is omitted, AgentMesh derives the same assumptions used before explicit capability routing:
+
+| Adapter | Default effective capabilities |
+| --- | --- |
+| `openai` | `text`, `tools` |
+| `anthropic` | `text`, `tools` |
+| `responses` | `text`, `tools`, `reasoning`, `native_responses_tools` |
+
+If `capabilities` is supplied, the list is authoritative. Use explicit capabilities when a particular model is more limited than its wire adapter. Effective capabilities are visible at the authenticated `/admin/providers` endpoint.
+
+The router currently does not advertise vision, audio, or context-window capability routing. Those dimensions remain roadmap items until the normalized request model can express and test them reliably.
+
 The repository includes [.env.example](.env.example). Docker Compose consumes `.env` through `env_file`; a direct local Python process uses the environment of the shell that launches `agentmesh`.
 
 ## Responses routing behavior
@@ -156,6 +185,8 @@ The repository includes [.env.example](.env.example). Docker Compose consumes `.
 A Responses request containing only semantics that AgentMesh can translate may route to an `openai` or eligible `anthropic` adapter. Custom `function` tools are part of this translated surface.
 
 Requests that carry Responses-specific semantics such as reasoning controls, encrypted reasoning items, Responses text/stream controls, or recognized non-function native tools are marked **native-only**. They require an adapter of type `responses`. If no eligible native provider exists, AgentMesh returns an error before streaming headers are committed.
+
+Capabilities add a second feasibility gate. A native Responses adapter can still be excluded if its explicit capability list does not contain the requirements derived from the request.
 
 Unknown tool/input types are rejected explicitly rather than silently discarded.
 
