@@ -18,11 +18,27 @@
 
 ## v0.2 — Agent compatibility
 
-- [x] text-only OpenAI Responses API ingress and core streaming events
-- [ ] full Responses API tools/reasoning/image lifecycle compatibility
-- [ ] complete Anthropic tool-use conversion
-- [ ] Codex CLI compatibility test harness
-- [ ] Claude Code-compatible contract test harness
+- [x] OpenAI Responses-shaped ingress with HTTP/SSE text streaming
+- [x] custom function-call and function-result normalization across Responses, Chat Completions, and Anthropic Messages
+- [x] streamed custom function-call argument translation and continuation
+- [x] deterministic Codex custom-provider contract harness for text and custom-function turns
+- [x] native `responses` upstream adapter for semantics that must not be downgraded
+- [x] native preservation of Responses reasoning controls and encrypted reasoning items
+- [x] native preservation of recognized Responses built-in tool definitions and SSE lifecycle events
+- [x] capability-aware native-only routing and explicit unsupported-feature gates
+- [x] failover safety before stream commitment with no silent provider switch after commitment
+- [x] release smoke verification and CI on Python 3.11, 3.12, and 3.13
+
+## Deferred compatibility backlog
+
+These are intentionally outside the verified v0.2 release surface rather than false blockers for v0.2:
+
+- [ ] cross-vendor reasoning translation
+- [ ] cross-vendor translation of Responses-native built-in tools
+- [ ] image/audio normalization across protocols
+- [ ] websocket Responses sampling
+- [ ] complete Codex authentication, compaction, memory, multi-agent, CLI, and SDK coverage
+- [ ] Claude Code-compatible contract suite
 - [ ] Cline and OpenCode compatibility fixtures
 - [ ] per-client model aliases
 
