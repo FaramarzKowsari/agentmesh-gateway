@@ -19,6 +19,13 @@ dependencies = [
   "typer>=0.12,<1",
 ]
 
+[project.urls]
+Homepage = "https://github.com/FaramarzKowsari/agentmesh-gateway"
+Repository = "https://github.com/FaramarzKowsari/agentmesh-gateway"
+Documentation = "https://github.com/FaramarzKowsari/agentmesh-gateway#readme"
+DOI = "https://doi.org/10.5281/zenodo.22069469"
+"v0.3.0 archive" = "https://doi.org/10.5281/zenodo.22069468"
+
 [project.optional-dependencies]
 dev = [
   "pytest>=8.3,<10",

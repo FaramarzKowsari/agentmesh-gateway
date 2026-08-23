@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+message: "If you use AgentMesh Gateway in research or software, please cite this release."
+title: "AgentMesh Gateway"
+type: software
+authors:
+  - family-names: "Kowsari"
+    given-names: "Faramarz"
+    orcid: "https://orcid.org/0000-0003-1692-0453"
+version: "0.3.0"
+date-released: 2026-08-23
+doi: "10.5281/zenodo.22069468"
+repository-code: "https://github.com/FaramarzKowsari/agentmesh-gateway"
+url: "https://doi.org/10.5281/zenodo.22069468"
+license: Apache-2.0
+keywords:
+  - AI gateway
+  - coding agents
+  - model routing
+  - OpenAI Responses
+  - Anthropic Messages
+  - adaptive routing
+  - constrained routing
+  - reproducible simulation
+abstract: >-
+  AgentMesh Gateway is an independent protocol-aware AI coding-agent and model gateway
+  with feasibility-first routing, provider fallback, deterministic policy simulation,
+  observed cost and latency evidence, local quota controls, and offline adaptive-routing
+  research baselines.
