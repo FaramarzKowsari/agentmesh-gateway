@@ -4,6 +4,12 @@ import time
 from dataclasses import dataclass
 
 
+def _valid_token_count(value: object) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return None
+    return value
+
+
 @dataclass(slots=True)
 class ProviderRuntimeState:
     successes: int = 0
@@ -56,8 +62,8 @@ class RuntimeStateStore:
         output_tokens: int | None,
         cost_usd: float | None,
     ) -> None:
-        valid_input = input_tokens if input_tokens is not None and input_tokens >= 0 else None
-        valid_output = output_tokens if output_tokens is not None and output_tokens >= 0 else None
+        valid_input = _valid_token_count(input_tokens)
+        valid_output = _valid_token_count(output_tokens)
         if valid_input is None and valid_output is None:
             return
 
@@ -70,10 +76,10 @@ class RuntimeStateStore:
         if valid_output is not None:
             state.output_tokens_total += valid_output
 
-        if cost_usd is not None and cost_usd >= 0:
-            state.cost_total_usd += cost_usd
+        if isinstance(cost_usd, (int, float)) and not isinstance(cost_usd, bool) and cost_usd >= 0:
+            state.cost_total_usd += float(cost_usd)
             state.cost_observations += 1
-            state.last_cost_usd = cost_usd
+            state.last_cost_usd = float(cost_usd)
         else:
             state.last_cost_usd = None
 
