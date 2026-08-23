@@ -4,13 +4,13 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agentmesh-gateway"
-version = "0.1.0"
-description = "Independent universal AI coding-agent and model gateway with policy routing and failover"
+version = "0.2.0"
+description = "Independent protocol-aware AI coding-agent and model gateway with policy routing and failover"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "Apache-2.0"}
 authors = [{name = "Faramarz Kowsari"}]
-keywords = ["ai", "gateway", "agents", "llm", "routing", "openai", "anthropic"]
+keywords = ["ai", "gateway", "agents", "llm", "routing", "openai", "anthropic", "responses", "codex"]
 dependencies = [
   "fastapi>=0.115,<1",
   "uvicorn[standard]>=0.30,<1",
