@@ -42,6 +42,12 @@ class OpenAIResponsesProvider:
         return self.spec.models[0]
 
     @staticmethod
+    def _token_count(value: object) -> int | None:
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            return None
+        return value
+
+    @staticmethod
     def _message_item(message: Message) -> dict[str, Any]:
         part_type = "output_text" if message.role == "assistant" else "input_text"
         return {
@@ -171,8 +177,8 @@ class OpenAIResponsesProvider:
             provider=self.name,
             model=str(data.get("model") or self._resolve_model(request.model)),
             content=content,
-            input_tokens=usage.get("input_tokens"),
-            output_tokens=usage.get("output_tokens"),
+            input_tokens=self._token_count(usage.get("input_tokens")),
+            output_tokens=self._token_count(usage.get("output_tokens")),
             raw_id=data.get("id"),
             tool_calls=tool_calls,
             native_responses=data,
@@ -205,6 +211,8 @@ class OpenAIResponsesProvider:
                     text = ""
                     function_delta = None
                     done = event_type == "response.completed"
+                    input_tokens = None
+                    output_tokens = None
                     if event_type == "response.output_text.delta":
                         text = str(event.get("delta") or "")
                     elif event_type == "response.output_item.added":
@@ -232,6 +240,11 @@ class OpenAIResponsesProvider:
                             name=name,
                             arguments_delta=str(event.get("delta") or ""),
                         )
+                    elif done and isinstance(response_body, dict):
+                        usage = response_body.get("usage")
+                        if isinstance(usage, dict):
+                            input_tokens = self._token_count(usage.get("input_tokens"))
+                            output_tokens = self._token_count(usage.get("output_tokens"))
 
                     yield StreamChunk(
                         provider=self.name,
@@ -240,6 +253,8 @@ class OpenAIResponsesProvider:
                         done=done,
                         function_call_delta=function_delta,
                         native_responses_event=event,
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
                     )
         except httpx.HTTPError as exc:
             raise translate_http_error(self.name, exc) from exc

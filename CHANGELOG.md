@@ -10,11 +10,17 @@ All notable changes to AgentMesh Gateway are documented in this file.
 - Capability-aware feasibility filtering before latency/cost/quality/ordered routing policies are applied.
 - Effective provider capabilities in `/admin/providers` diagnostics.
 - ADR 0003 documenting the capability gate as a hard routing constraint and research foundation for later adaptive policies.
+- Optional `input_cost_per_million` and `output_cost_per_million` provider prices in USD per one million tokens.
+- Observed input/output token totals, cost totals, observation counts, and last observed usage/cost in provider runtime diagnostics.
+- Native Responses streaming usage accounting when exact final usage is present in `response.completed`.
+- ADR 0004 defining observed-only accounting and the separation between routing `cost_hint` and measured cost evidence.
 
 ### Compatibility
 
 - Existing provider configurations that omit `capabilities` keep adapter-derived defaults matching the prior behavior.
 - An explicit capability list is authoritative and can restrict a provider from tool, reasoning, or native-tool traffic even when the adapter shape would otherwise be eligible.
+- Existing `cost_hint` routing behavior is unchanged; token prices and observed USD costs do not silently change routing scores.
+- Missing token usage or missing token prices remain unobserved rather than being treated as zero cost.
 
 ## [0.2.0] - 2026-08-23
 

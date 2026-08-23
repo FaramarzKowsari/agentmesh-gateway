@@ -38,6 +38,21 @@ def _parse_capabilities(value: object) -> tuple[Capability, ...] | None:
     return tuple(capabilities)
 
 
+def _optional_nonnegative_float(value: object, field_name: str) -> float | None:
+    if value is None:
+        return None
+    parsed = float(value)
+    if parsed < 0:
+        raise ValueError(f"{field_name} must be non-negative")
+    return parsed
+
+
+def _valid_token_count(value: object) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return None
+    return value
+
+
 @dataclass(slots=True, frozen=True)
 class ProviderSpec:
     name: str
@@ -50,6 +65,16 @@ class ProviderSpec:
     weight: float = 1.0
     timeout_seconds: float = 120.0
     capabilities: tuple[Capability, ...] | None = None
+    input_cost_per_million: float | None = None
+    output_cost_per_million: float | None = None
+
+    def __post_init__(self) -> None:
+        for field_name, value in (
+            ("input_cost_per_million", self.input_cost_per_million),
+            ("output_cost_per_million", self.output_cost_per_million),
+        ):
+            if value is not None and value < 0:
+                raise ValueError(f"{field_name} must be non-negative")
 
     def effective_capabilities(self) -> frozenset[Capability]:
         if self.capabilities is not None:
@@ -57,6 +82,22 @@ class ProviderSpec:
         if self.adapter == "responses":
             return frozenset({"text", "tools", "reasoning", "native_responses_tools"})
         return frozenset({"text", "tools"})
+
+    def observed_cost_usd(
+        self,
+        input_tokens: int | None,
+        output_tokens: int | None,
+    ) -> float | None:
+        valid_input = _valid_token_count(input_tokens)
+        valid_output = _valid_token_count(output_tokens)
+        if valid_input is None or valid_output is None:
+            return None
+        if self.input_cost_per_million is None or self.output_cost_per_million is None:
+            return None
+        return (
+            valid_input * self.input_cost_per_million
+            + valid_output * self.output_cost_per_million
+        ) / 1_000_000
 
     @classmethod
     def from_dict(cls, data: dict[str, object]) -> ProviderSpec:
@@ -78,6 +119,14 @@ class ProviderSpec:
                 weight=float(data.get("weight", 1.0)),
                 timeout_seconds=float(data.get("timeout_seconds", 120.0)),
                 capabilities=_parse_capabilities(data.get("capabilities")),
+                input_cost_per_million=_optional_nonnegative_float(
+                    data.get("input_cost_per_million"),
+                    "input_cost_per_million",
+                ),
+                output_cost_per_million=_optional_nonnegative_float(
+                    data.get("output_cost_per_million"),
+                    "output_cost_per_million",
+                ),
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise ConfigurationError(f"invalid provider specification: {exc}") from exc

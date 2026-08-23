@@ -44,14 +44,15 @@ These are intentionally outside the verified v0.2 release surface rather than fa
 
 ## v0.3 — Adaptive router
 
-- [ ] token-normalized cost accounting
-- [ ] EWMA latency percentiles
+- [x] observed token-normalized cost accounting with explicit per-million prices
+- [ ] latency distribution / percentile tracking
 - [ ] quota window tracking
 - [x] explicit capability gate for text, tools, reasoning, and native Responses tools
 - [ ] extend capability requirements to vision/context length after the normalized request model supports them
 - [ ] task classifier
 - [ ] benchmark-derived quality profiles
 - [ ] policy simulation CLI
+- [ ] adaptive constrained routing experiments after deterministic simulation exists
 
 ## v0.4 — Control plane
 
