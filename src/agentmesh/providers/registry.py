@@ -4,6 +4,7 @@ from agentmesh.config import ProviderSpec
 from agentmesh.providers.anthropic import AnthropicProvider
 from agentmesh.providers.base import Provider
 from agentmesh.providers.openai_compatible import OpenAICompatibleProvider
+from agentmesh.providers.openai_responses import OpenAIResponsesProvider
 
 
 class ProviderRegistry:
@@ -13,6 +14,8 @@ class ProviderRegistry:
         for spec in specs:
             if spec.adapter == "openai":
                 provider: Provider = OpenAICompatibleProvider(spec)
+            elif spec.adapter == "responses":
+                provider = OpenAIResponsesProvider(spec)
             else:
                 provider = AnthropicProvider(spec)
             self.providers[spec.name] = provider

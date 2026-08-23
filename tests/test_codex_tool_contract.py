@@ -139,7 +139,6 @@ async def test_codex_streamed_function_call_and_output_continuation() -> None:
         ],
         "tools": [_function_tool()],
         "stream": True,
-        "store": False,
     }
 
     transport = httpx.ASGITransport(app=app)
@@ -187,7 +186,6 @@ async def test_codex_streamed_function_call_and_output_continuation() -> None:
             ],
             "tools": [_function_tool()],
             "stream": True,
-            "store": False,
         }
         second_response = await client.post("/v1/responses", json=second_payload)
 

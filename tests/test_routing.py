@@ -1,5 +1,10 @@
 from agentmesh.config import ProviderSpec
-from agentmesh.domain import Message, NormalizedRequest
+from agentmesh.domain import (
+    Message,
+    NormalizedRequest,
+    ReasoningControls,
+    ResponsesControls,
+)
 from agentmesh.routing.router import Router
 from agentmesh.routing.state import RuntimeStateStore
 
@@ -42,3 +47,34 @@ def test_open_circuit_is_excluded() -> None:
     states.record_failure("cheap", "x", threshold=1, cooldown_seconds=60)
     router = Router(items, states, "cost")
     assert [x.name for x in router.rank(request())] == ["quality"]
+
+
+def test_reasoning_semantics_route_only_to_native_responses_provider() -> None:
+    items = (
+        ProviderSpec("chat", "openai", "http://chat", ("m",)),
+        ProviderSpec("native", "responses", "http://native", ("m",)),
+    )
+    states = RuntimeStateStore([x.name for x in items])
+    router = Router(items, states, "ordered")
+    native_request = NormalizedRequest(
+        "m",
+        (Message("user", "hi"),),
+        responses=ResponsesControls(
+            reasoning=ReasoningControls(effort="high", summary="auto"),
+            raw_input="hi",
+            requires_native=True,
+        ),
+    )
+
+    assert [x.name for x in router.rank(native_request)] == ["native"]
+
+
+def test_non_responses_ingress_does_not_route_to_native_adapter() -> None:
+    items = (
+        ProviderSpec("native", "responses", "http://native", ("m",)),
+        ProviderSpec("chat", "openai", "http://chat", ("m",)),
+    )
+    states = RuntimeStateStore([x.name for x in items])
+    router = Router(items, states, "ordered")
+
+    assert [x.name for x in router.rank(request())] == ["chat"]

@@ -28,6 +28,10 @@ class GatewayService:
         self.failure_threshold = failure_threshold
         self.cooldown_seconds = cooldown_seconds
 
+    def ensure_eligible(self, request: NormalizedRequest) -> None:
+        if not self.router.rank(request):
+            raise NoProviderAvailable("no provider is currently eligible for this request")
+
     async def complete(self, request: NormalizedRequest) -> NormalizedResponse:
         candidates = self.router.rank(request)
         if not candidates:

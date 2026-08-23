@@ -114,8 +114,6 @@ async def test_codex_responses_contract_round_trips_through_fake_upstream() -> N
                 "strict": True,
             }
         ],
-        "parallel_tool_calls": False,
-        "store": False,
         "stream": True,
     }
 

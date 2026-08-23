@@ -44,7 +44,7 @@ async def post(payload: dict[str, object]) -> httpx.Response:
 
 
 @pytest.mark.asyncio
-async def test_rejects_unsupported_reasoning_input_item() -> None:
+async def test_reasoning_input_requires_native_responses_provider() -> None:
     response = await post(
         {
             "model": "m",
@@ -52,15 +52,28 @@ async def test_rejects_unsupported_reasoning_input_item() -> None:
         }
     )
 
-    assert response.status_code == 400
+    assert response.status_code == 503
     assert response.json() == {
-        "error": {
-            "type": "invalid_request_error",
-            "code": "unsupported_feature",
-            "message": "Responses input item type 'reasoning' is not supported by AgentMesh",
-            "feature": "responses.input.reasoning",
-        }
+        "error": {"message": "no provider is currently eligible for this request"}
     }
+
+
+@pytest.mark.asyncio
+async def test_native_only_stream_is_rejected_before_stream_headers_start() -> None:
+    response = await post(
+        {
+            "model": "m",
+            "input": "continue",
+            "reasoning": {"effort": "high"},
+            "stream": True,
+        }
+    )
+
+    assert response.status_code == 503
+    assert response.headers["content-type"].startswith("application/json")
+    assert response.json()["error"]["message"] == (
+        "no provider is currently eligible for this request"
+    )
 
 
 @pytest.mark.asyncio

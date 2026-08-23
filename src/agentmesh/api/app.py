@@ -15,10 +15,11 @@ from agentmesh.errors import ClientRequestError, NoProviderAvailable, ProviderEr
 from agentmesh.gateway.service import GatewayService
 from agentmesh.protocols.anthropic import parse_anthropic_request, render_anthropic_response
 from agentmesh.protocols.openai import parse_openai_request, render_openai_response
-from agentmesh.protocols.responses import (
-    parse_responses_request,
-    render_responses_response,
-    render_responses_stream,
+from agentmesh.protocols.responses import parse_responses_request
+from agentmesh.protocols.responses_native import (
+    attach_responses_controls,
+    render_responses_or_native,
+    render_responses_stream_or_native,
 )
 from agentmesh.protocols.responses_validation import validate_responses_payload
 from agentmesh.providers.registry import ProviderRegistry
@@ -90,9 +91,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/readyz")
     async def ready() -> dict[str, object]:
-        available = [
-            name for name, state in states.snapshot().items() if state.available()
-        ]
+        available = [name for name, state in states.snapshot().items() if state.available()]
         if not available:
             raise HTTPException(status_code=503, detail="no provider circuit is available")
         return {"status": "ready", "providers": available}
@@ -129,6 +128,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def openai_chat(payload: dict[str, Any]):
         normalized = parse_openai_request(payload)
         if normalized.stream:
+            gateway.ensure_eligible(normalized)
+
             async def generate():  # type: ignore[no-untyped-def]
                 async for chunk in gateway.stream(normalized):
                     if chunk.done:
@@ -143,6 +144,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         "choices": [{"index": 0, "delta": {"content": chunk.text}}],
                     }
                     yield f"data: {json.dumps(event)}\n\n"
+
             return StreamingResponse(generate(), media_type="text/event-stream")
         response = await gateway.complete(normalized)
         return render_openai_response(response)
@@ -150,20 +152,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/v1/responses", dependencies=[Depends(require_gateway_token)])
     async def responses_api(payload: dict[str, Any]):
         validate_responses_payload(payload)
-        normalized = parse_responses_request(payload)
+        normalized = attach_responses_controls(parse_responses_request(payload), payload)
         if normalized.stream:
-            events = render_responses_stream(
+            gateway.ensure_eligible(normalized)
+            events = render_responses_stream_or_native(
                 gateway.stream(normalized),
                 normalized.model,
             )
             return StreamingResponse(events, media_type="text/event-stream")
         response = await gateway.complete(normalized)
-        return render_responses_response(response)
+        return render_responses_or_native(response)
 
     @app.post("/v1/messages", dependencies=[Depends(require_gateway_token)])
     async def anthropic_messages(payload: dict[str, Any]):
         normalized = parse_anthropic_request(payload)
         if normalized.stream:
+            gateway.ensure_eligible(normalized)
+
             async def generate():  # type: ignore[no-untyped-def]
                 async for chunk in gateway.stream(normalized):
                     if chunk.done:
@@ -175,6 +180,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                             "delta": {"type": "text_delta", "text": chunk.text},
                         }
                     yield f"event: {event['type']}\ndata: {json.dumps(event)}\n\n"
+
             return StreamingResponse(generate(), media_type="text/event-stream")
         response = await gateway.complete(normalized)
         return render_anthropic_response(response)

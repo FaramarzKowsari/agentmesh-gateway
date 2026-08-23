@@ -1,6 +1,6 @@
 # Codex compatibility contract
 
-AgentMesh includes a deterministic contract harness for the public custom-provider boundary used by OpenAI Codex. The harness does not download Codex, does not contact OpenAI, and does not require a provider API key.
+AgentMesh includes deterministic contract harnesses for the public custom-provider boundary used by OpenAI Codex. The harnesses do not download Codex, do not contact OpenAI, and do not require a live provider API key.
 
 ## Contract boundary
 
@@ -25,11 +25,11 @@ POST /v1/responses
 
 The fixture is stored at `tests/fixtures/codex/config.toml`.
 
-## What the harness proves
+## Translation contracts
 
-`tests/test_codex_contract.py` sends a Codex-shaped text request into the real AgentMesh ASGI application. `tests/test_codex_tool_contract.py` extends the same public boundary through a complete custom-function turn. Both tests route through AgentMesh's real provider selection and OpenAI-compatible adapter backed by `httpx.MockTransport`.
+`tests/test_codex_contract.py` sends a translatable Responses text request into the real AgentMesh ASGI application. `tests/test_codex_tool_contract.py` extends the same public boundary through a complete custom-function turn. These tests route through AgentMesh's real provider selection and Chat Completions adapter backed by `httpx.MockTransport`.
 
-The contract suite verifies that:
+They verify that:
 
 - instructions become a system message for a Chat Completions-style upstream;
 - user input survives normalization;
@@ -41,7 +41,23 @@ The contract suite verifies that:
 - the continuation can stream a final assistant text response through `/v1/responses`;
 - a streamed tool call commits the response, preventing silent failover after the client has observed tool state.
 
-No external network call is made by the contract tests.
+## Native Responses reasoning contract
+
+`tests/test_native_responses.py` covers request semantics that must not be downgraded to Chat Completions or Anthropic Messages. The test configures an ordinary Chat Completions provider before a native `responses` provider and proves that a reasoning-bearing Codex-style request skips the ordinary provider.
+
+The native contract preserves on the upstream wire:
+
+- `reasoning.effort`, `reasoning.summary`, and `reasoning.context`;
+- `include`, including `reasoning.encrypted_content`;
+- prior reasoning input items and encrypted content;
+- `prompt_cache_key` and `service_tier`;
+- Responses `text` and `stream_options` controls;
+- `client_metadata`;
+- `tool_choice`, `parallel_tool_calls`, and `store`.
+
+Native Responses SSE events are proxied as Responses events instead of being reconstructed from a reduced text-only representation. The contract therefore verifies that reasoning output items and encrypted reasoning content remain present in the client-facing stream. The native adapter also normalizes assistant text and custom function-call deltas internally so the provider boundary remains observable and testable.
+
+No external network call is made by these contract tests.
 
 ## Provenance of the contract
 
@@ -49,9 +65,10 @@ The boundary was checked against the upstream `openai/codex` repository at commi
 
 - `sdk/typescript/tests/testCodex.ts` configures a mock provider with `base_url`, `wire_api = "responses"`, and `supports_websockets = false`.
 - `codex-rs/core/tests/suite/cli_stream.rs` configures a custom Responses provider at `<server>/v1` and verifies that Codex posts to `/v1/responses`.
+- `codex-rs/codex-api/src/common.rs` defines the current Responses request surface, including reasoning, include, service tier, prompt cache key, text controls, stream options, and client metadata.
 
 AgentMesh intentionally tests the public wire boundary rather than copying Codex implementation code or test fixtures.
 
 ## What this does not prove
 
-This contract must not be described as complete Codex compatibility. It does not yet prove reasoning-item preservation, built-in OpenAI tool semantics, websocket sampling, all authentication modes, images/audio, multi-agent behavior, or every Codex CLI/SDK feature. Those require separate explicit gates.
+This contract must not be described as complete Codex compatibility. It does not yet prove cross-vendor reasoning translation, built-in OpenAI tool semantics, websocket sampling, all authentication modes, images/audio, multi-agent behavior, compaction/memory endpoints, or every Codex CLI/SDK feature. Those require separate explicit gates.

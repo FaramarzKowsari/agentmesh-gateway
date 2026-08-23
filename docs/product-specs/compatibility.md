@@ -2,14 +2,15 @@
 
 ## Goal
 
-A coding client should target one AgentMesh endpoint and continue to work when the selected upstream changes.
+A coding client should target one AgentMesh endpoint and continue to work when the selected upstream changes without silently losing protocol semantics.
 
 ## Verified support
 
 - OpenAI Chat Completions-shaped ingress for text conversations
-- OpenAI Responses-shaped text ingress and ordered text streaming lifecycle
+- OpenAI Responses-shaped ingress for text, custom functions, and native Responses controls
 - Anthropic Messages-shaped ingress for text conversations
-- generic OpenAI-compatible upstreams
+- generic OpenAI-compatible Chat Completions upstreams
+- native OpenAI Responses-compatible upstreams
 - Anthropic Messages upstreams
 - non-streaming completion
 - text streaming with failover only before the first committed chunk
@@ -27,21 +28,40 @@ A coding client should target one AgentMesh endpoint and continue to work when t
   - Responses text streaming
   - a streamed function call
   - `function_call_output` continuation back into the selected upstream
+- native Responses preservation for Responses-only request semantics including:
+  - `reasoning` controls
+  - `include`
+  - reasoning input items
+  - `prompt_cache_key`
+  - `service_tier`
+  - Responses `text` controls
+  - `stream_options`
+  - `client_metadata`
+  - `tool_choice`, `parallel_tool_calls`, and `store`
+- native Responses SSE passthrough so reasoning items and encrypted reasoning content are not
+  flattened into text or discarded
 
 ## Explicitly incomplete
 
 The following are roadmap items and must not be claimed as complete:
 
-- OpenAI Responses reasoning-item preservation or translation
+- cross-vendor reasoning translation between Responses, Chat Completions, and Anthropic thinking
 - built-in OpenAI tool semantics such as web search, file search, computer use, or code interpreter
 - image/audio normalization
 - websocket sampling
-- prompt caching semantics
+- cross-vendor prompt caching semantics
 - batch APIs
-- vendor-specific reasoning block preservation
+- translation of vendor-specific reasoning blocks into a shared reasoning representation
 - complete authentication-mode coverage for coding clients
 - full Codex, Claude Code, Cline, and OpenCode contract suites
 
+## Routing rule
+
+If a Responses request contains semantics that AgentMesh cannot translate losslessly, only a native
+`responses` provider is eligible. The gateway must return that no eligible provider is available
+rather than silently sending a downgraded request to another adapter.
+
 ## Compatibility principle
 
-When a feature cannot be translated without semantic loss, AgentMesh should expose the limitation rather than silently manufacture equivalent-looking output.
+When a feature cannot be translated without semantic loss, AgentMesh should expose the limitation
+or preserve the native protocol boundary rather than manufacture equivalent-looking output.

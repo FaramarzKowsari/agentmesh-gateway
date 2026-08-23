@@ -4,7 +4,7 @@ from typing import Any
 
 from agentmesh.errors import ClientRequestError
 
-SUPPORTED_ITEM_TYPES = {"message", "function_call", "function_call_output"}
+SUPPORTED_ITEM_TYPES = {"message", "function_call", "function_call_output", "reasoning"}
 SUPPORTED_MESSAGE_PART_TYPES = {"input_text", "output_text", "text"}
 
 
@@ -57,6 +57,9 @@ def _validate_input_item(item: object) -> None:
         _validate_message_content(item.get("content", ""))
         return
 
+    if item_type == "reasoning":
+        return
+
     if item_type == "function_call":
         if not item.get("call_id") and not item.get("id"):
             raise ClientRequestError("Responses function_call requires call_id or id")
@@ -87,6 +90,38 @@ def _validate_tools(tools: object) -> None:
             raise ClientRequestError("Responses function tools require a function name")
 
 
+def _validate_optional_object(payload: dict[str, Any], key: str) -> None:
+    value = payload.get(key)
+    if value is not None and not isinstance(value, dict):
+        raise ClientRequestError(f"Responses {key} must be an object")
+
+
+def _validate_optional_string(payload: dict[str, Any], key: str) -> None:
+    value = payload.get(key)
+    if value is not None and not isinstance(value, str):
+        raise ClientRequestError(f"Responses {key} must be a string")
+
+
+def _validate_reasoning(payload: dict[str, Any]) -> None:
+    reasoning = payload.get("reasoning")
+    if reasoning is None:
+        return
+    if not isinstance(reasoning, dict):
+        raise ClientRequestError("Responses reasoning must be an object")
+    for key in ("effort", "summary", "context"):
+        value = reasoning.get(key)
+        if value is not None and not isinstance(value, str):
+            raise ClientRequestError(f"Responses reasoning.{key} must be a string")
+
+
+def _validate_include(payload: dict[str, Any]) -> None:
+    include = payload.get("include")
+    if include is None:
+        return
+    if not isinstance(include, list) or not all(isinstance(item, str) for item in include):
+        raise ClientRequestError("Responses include must be a list of strings")
+
+
 def validate_responses_payload(payload: dict[str, Any]) -> None:
     input_value = payload.get("input", "")
     if isinstance(input_value, str):
@@ -98,3 +133,10 @@ def validate_responses_payload(payload: dict[str, Any]) -> None:
         raise ClientRequestError("Responses input must be a string or a list")
 
     _validate_tools(payload.get("tools"))
+    _validate_reasoning(payload)
+    _validate_include(payload)
+    _validate_optional_string(payload, "prompt_cache_key")
+    _validate_optional_string(payload, "service_tier")
+    _validate_optional_object(payload, "text")
+    _validate_optional_object(payload, "stream_options")
+    _validate_optional_object(payload, "client_metadata")

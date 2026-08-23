@@ -22,6 +22,41 @@ class FunctionCallDelta:
 
 
 @dataclass(slots=True, frozen=True)
+class ReasoningControls:
+    effort: str | None = None
+    summary: str | None = None
+    context: str | None = None
+
+    def as_dict(self) -> dict[str, str]:
+        return {
+            key: value
+            for key, value in (
+                ("effort", self.effort),
+                ("summary", self.summary),
+                ("context", self.context),
+            )
+            if value is not None
+        }
+
+
+@dataclass(slots=True, frozen=True)
+class ResponsesControls:
+    instructions: str | None = None
+    reasoning: ReasoningControls | None = None
+    include: tuple[str, ...] = ()
+    prompt_cache_key: str | None = None
+    service_tier: str | None = None
+    text: dict[str, Any] | None = None
+    stream_options: dict[str, Any] | None = None
+    client_metadata: dict[str, Any] | None = None
+    tool_choice: object | None = None
+    parallel_tool_calls: bool | None = None
+    store: bool | None = None
+    raw_input: object = ""
+    requires_native: bool = False
+
+
+@dataclass(slots=True, frozen=True)
 class Message:
     role: Role
     content: str
@@ -38,6 +73,7 @@ class NormalizedRequest:
     stream: bool = False
     tools: tuple[dict[str, Any], ...] = ()
     metadata: dict[str, Any] = field(default_factory=dict)
+    responses: ResponsesControls | None = None
 
 
 @dataclass(slots=True, frozen=True)
@@ -49,6 +85,7 @@ class NormalizedResponse:
     output_tokens: int | None = None
     raw_id: str | None = None
     tool_calls: tuple[FunctionCall, ...] = ()
+    native_responses: dict[str, Any] | None = None
 
 
 @dataclass(slots=True, frozen=True)
@@ -58,3 +95,4 @@ class StreamChunk:
     text: str = ""
     done: bool = False
     function_call_delta: FunctionCallDelta | None = None
+    native_responses_event: dict[str, Any] | None = None

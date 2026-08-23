@@ -7,7 +7,7 @@ from typing import Literal
 
 from agentmesh.errors import ConfigurationError
 
-AdapterName = Literal["openai", "anthropic"]
+AdapterName = Literal["openai", "anthropic", "responses"]
 RoutingPolicy = Literal["balanced", "latency", "cost", "quality", "ordered"]
 
 
@@ -30,7 +30,7 @@ class ProviderSpec:
             if not models:
                 raise ValueError("models must not be empty")
             adapter = str(data.get("adapter", "openai"))
-            if adapter not in {"openai", "anthropic"}:
+            if adapter not in {"openai", "anthropic", "responses"}:
                 raise ValueError(f"unsupported adapter: {adapter}")
             return cls(
                 name=str(data["name"]),
