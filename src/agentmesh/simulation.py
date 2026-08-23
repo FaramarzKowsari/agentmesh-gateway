@@ -169,7 +169,6 @@ def simulate_policy(
     clock = SimulationClock()
     states = RuntimeStateStore([spec.name for spec in specs], clock=clock)
     router = Router(specs, states, policy)
-    spec_by_name = {spec.name: spec for spec in specs}
     rows: list[dict[str, Any]] = []
 
     for index, item in enumerate(trace):
