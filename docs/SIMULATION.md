@@ -9,6 +9,16 @@ agentmesh simulate \
   --policies ordered,latency,cost,quality,balanced
 ```
 
+Adaptive research policies can be included with an optional provenance-checked quality profile:
+
+```bash
+agentmesh simulate \
+  --providers examples/simulation/providers.json \
+  --trace examples/simulation/trace.jsonl \
+  --quality-profiles examples/simulation/quality-profiles.json \
+  --policies balanced,adaptive_balanced,constrained_ucb
+```
+
 Use `--format csv` for row-oriented output or `--output PATH` to write a file.
 
 ## Provider file
@@ -48,27 +58,39 @@ For each selected provider, the trace may report:
 - `input_tokens` / `output_tokens`: optional exact non-negative counts;
 - `quality`: optional observed score in `[0, 1]` supplied by the trace producer.
 
-Missing usage remains missing. Cost is calculated only when both exact token counts and both explicit provider prices exist. Missing quality remains missing.
+Missing usage remains missing. Cost is calculated only when both exact token counts and both explicit provider prices exist. Missing outcome quality remains missing in reported measurements.
 
 ## Fair policy comparison
 
-Each policy is replayed from a fresh runtime state and an independent deterministic clock. This prevents a prior policy run from consuming another policy's quota or seeding its latency state.
+Each policy is replayed from a fresh runtime state and an independent deterministic clock. This prevents a prior policy run from consuming another policy's quota, seeding its latency state, or training its bandit state.
 
-The baseline policies are `ordered`, `latency`, `cost`, `quality`, and `balanced`.
+Static policies are `ordered`, `latency`, `cost`, `quality`, and `balanced`.
+
+Two simulation-only adaptive policies are available:
+
+- `adaptive_balanced` — a deterministic multi-objective score whose latency and cost terms evolve from selected observations and whose contextual quality prior comes from a matching benchmark quality profile when available;
+- `constrained_ucb` — an experimental contextual UCB baseline with selected-only feedback and deterministic tie-breaking.
+
+Both receive their candidate set from the normal feasibility logic. Model, protocol, capability, circuit, and quota-exhaustion constraints cannot be overridden by adaptive scoring.
+
+See [QUALITY_PROFILES.md](QUALITY_PROFILES.md) for the quality evidence contract and ADR 0008 for the adaptive research boundary.
 
 ## Output
 
-JSON output contains a per-policy summary plus per-request rows. CSV output contains the row-level fields:
+JSON output contains a per-policy summary plus per-request rows. CSV output contains:
 
 - policy
 - request ID / simulation time
-- selected provider
-- status
-- latency
-- observed cost
-- supplied quality
+- semantic task class
+- selected provider and status
+- latency and observed cost
+- supplied outcome quality
+- matching profile quality, when available
+- policy selection value for adaptive policies
 - local quota pressure after the attempt
+
+`constrained_ucb` JSON output also includes final per-task/provider feedback counts and mean rewards.
 
 ## Research caution
 
-The committed files in `examples/simulation/` are tiny deterministic fixtures for demonstrating mechanics. They are **not benchmark evidence** and must not be cited as measured model/provider performance. Research claims require a documented trace source or a committed benchmark-generation procedure.
+The committed files in `examples/simulation/` are tiny deterministic fixtures for demonstrating mechanics. They are **not benchmark evidence** and must not be cited as measured model/provider performance. The quality-profile example explicitly identifies itself as synthetic. Research claims require a documented trace source or a committed benchmark-generation procedure.
