@@ -19,7 +19,19 @@ class Router:
     @staticmethod
     def _supports_request(spec: ProviderSpec, request: NormalizedRequest) -> bool:
         controls = request.responses
-        if controls is not None and controls.requires_native and spec.adapter != "responses":
+        if controls is None:
+            return spec.adapter != "responses"
+        if controls.requires_native and spec.adapter != "responses":
+            return False
+        if spec.adapter == "anthropic" and any(
+            (
+                controls.prompt_cache_key is not None,
+                controls.service_tier is not None,
+                controls.tool_choice is not None,
+                controls.parallel_tool_calls is not None,
+                controls.store is not None,
+            )
+        ):
             return False
         return True
 
