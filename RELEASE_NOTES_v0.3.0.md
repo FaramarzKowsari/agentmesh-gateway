@@ -91,3 +91,12 @@ v0.3.0 does not claim:
 Existing provider configurations remain valid. All new capability, token-price, and local quota fields are optional.
 
 The package/runtime version is `0.3.0` and Python 3.11+ remains required.
+
+
+## Archival and DOI
+
+This release is archived through the Zenodo–GitHub integration.
+
+- Release DOI: `10.5281/zenodo.22069468`
+- Repository DOI displayed by Zenodo: `10.5281/zenodo.22069469`
+- Citation metadata is available in `CITATION.cff`.
