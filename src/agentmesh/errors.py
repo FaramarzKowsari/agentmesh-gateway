@@ -9,6 +9,21 @@ class ConfigurationError(AgentMeshError):
     """Raised for invalid gateway configuration."""
 
 
+class ClientRequestError(AgentMeshError):
+    """Raised when a client requests unsupported or invalid protocol semantics."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = "invalid_request",
+        feature: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.code = code
+        self.feature = feature
+
+
 class ProviderError(AgentMeshError):
     """Normalized provider failure."""
 
