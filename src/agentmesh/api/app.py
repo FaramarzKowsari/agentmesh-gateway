@@ -128,6 +128,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def openai_chat(payload: dict[str, Any]):
         normalized = parse_openai_request(payload)
         if normalized.stream:
+            gateway.ensure_eligible(normalized)
 
             async def generate():  # type: ignore[no-untyped-def]
                 async for chunk in gateway.stream(normalized):
@@ -153,6 +154,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         validate_responses_payload(payload)
         normalized = attach_responses_controls(parse_responses_request(payload), payload)
         if normalized.stream:
+            gateway.ensure_eligible(normalized)
             events = render_responses_stream_or_native(
                 gateway.stream(normalized),
                 normalized.model,
@@ -165,6 +167,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def anthropic_messages(payload: dict[str, Any]):
         normalized = parse_anthropic_request(payload)
         if normalized.stream:
+            gateway.ensure_eligible(normalized)
 
             async def generate():  # type: ignore[no-untyped-def]
                 async for chunk in gateway.stream(normalized):
