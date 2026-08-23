@@ -104,6 +104,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             result[spec.name] = {
                 "adapter": spec.adapter,
                 "models": list(spec.models),
+                "capabilities": sorted(spec.effective_capabilities()),
                 "available": state.available(),
                 "successes": state.successes,
                 "failures": state.failures,
