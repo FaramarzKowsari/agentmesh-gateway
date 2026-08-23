@@ -1,13 +1,25 @@
 from __future__ import annotations
 
+import math
 import time
-from dataclasses import dataclass
+from collections import deque
+from dataclasses import dataclass, field
+
+DEFAULT_LATENCY_SAMPLE_WINDOW = 128
 
 
 def _valid_token_count(value: object) -> int | None:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         return None
     return value
+
+
+def _nearest_rank_percentile(samples: deque[float], percentile: float) -> float | None:
+    if not samples:
+        return None
+    ordered = sorted(samples)
+    rank = max(1, math.ceil(percentile * len(ordered)))
+    return ordered[rank - 1]
 
 
 @dataclass(slots=True)
@@ -26,14 +38,44 @@ class ProviderRuntimeState:
     last_input_tokens: int | None = None
     last_output_tokens: int | None = None
     last_cost_usd: float | None = None
+    latency_window_size: int = DEFAULT_LATENCY_SAMPLE_WINDOW
+    latency_samples_ms: deque[float] = field(
+        default_factory=lambda: deque(maxlen=DEFAULT_LATENCY_SAMPLE_WINDOW),
+        repr=False,
+    )
+
+    @property
+    def latency_sample_count(self) -> int:
+        return len(self.latency_samples_ms)
+
+    @property
+    def latency_p50_ms(self) -> float | None:
+        return _nearest_rank_percentile(self.latency_samples_ms, 0.50)
+
+    @property
+    def latency_p95_ms(self) -> float | None:
+        return _nearest_rank_percentile(self.latency_samples_ms, 0.95)
 
     def available(self, now: float | None = None) -> bool:
         return self.circuit_open_until <= (time.monotonic() if now is None else now)
 
 
 class RuntimeStateStore:
-    def __init__(self, provider_names: list[str]) -> None:
-        self._states = {name: ProviderRuntimeState() for name in provider_names}
+    def __init__(
+        self,
+        provider_names: list[str],
+        *,
+        latency_sample_window: int = DEFAULT_LATENCY_SAMPLE_WINDOW,
+    ) -> None:
+        if latency_sample_window < 1:
+            raise ValueError("latency_sample_window must be at least 1")
+        self._states = {
+            name: ProviderRuntimeState(
+                latency_window_size=latency_sample_window,
+                latency_samples_ms=deque(maxlen=latency_sample_window),
+            )
+            for name in provider_names
+        }
 
     def get(self, name: str) -> ProviderRuntimeState:
         return self._states[name]
@@ -53,6 +95,8 @@ class RuntimeStateStore:
             if state.latency_ewma_ms is None
             else alpha * latency_ms + (1 - alpha) * state.latency_ewma_ms
         )
+        if math.isfinite(latency_ms) and latency_ms >= 0:
+            state.latency_samples_ms.append(float(latency_ms))
 
     def record_usage(
         self,
