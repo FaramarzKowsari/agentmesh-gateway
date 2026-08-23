@@ -1,8 +1,14 @@
 from __future__ import annotations
 
-from agentmesh.config import ProviderSpec, RoutingPolicy
+from agentmesh.config import Capability, ProviderSpec, RoutingPolicy
 from agentmesh.domain import NormalizedRequest
 from agentmesh.routing.state import RuntimeStateStore
+
+
+def _has_reasoning_input(value: object) -> bool:
+    if not isinstance(value, list):
+        return False
+    return any(isinstance(item, dict) and item.get("type") == "reasoning" for item in value)
 
 
 class Router:
@@ -17,24 +23,56 @@ class Router:
         self.policy = policy
 
     @staticmethod
-    def _supports_request(spec: ProviderSpec, request: NormalizedRequest) -> bool:
+    def required_capabilities(request: NormalizedRequest) -> frozenset[Capability]:
+        required: set[Capability] = {"text"}
+        if request.tools or any(
+            message.tool_calls or message.tool_call_id is not None for message in request.messages
+        ):
+            required.add("tools")
+
         controls = request.responses
         if controls is None:
-            return spec.adapter != "responses"
-        if controls.requires_native and spec.adapter != "responses":
-            return False
-        return not (
-            spec.adapter == "anthropic"
-            and any(
-                (
-                    controls.prompt_cache_key is not None,
-                    controls.service_tier is not None,
-                    controls.tool_choice is not None,
-                    controls.parallel_tool_calls is not None,
-                    controls.store is not None,
+            return frozenset(required)
+
+        if (
+            controls.reasoning is not None
+            or _has_reasoning_input(controls.raw_input)
+            or any(item.startswith("reasoning.") for item in controls.include)
+        ):
+            required.add("reasoning")
+
+        if any(
+            isinstance(tool, dict) and tool.get("type") not in {None, "function"}
+            for tool in request.tools
+        ):
+            required.add("native_responses_tools")
+
+        return frozenset(required)
+
+    @classmethod
+    def _supports_request(cls, spec: ProviderSpec, request: NormalizedRequest) -> bool:
+        controls = request.responses
+        if controls is None:
+            protocol_supported = spec.adapter != "responses"
+        elif controls.requires_native and spec.adapter != "responses":
+            protocol_supported = False
+        else:
+            protocol_supported = not (
+                spec.adapter == "anthropic"
+                and any(
+                    (
+                        controls.prompt_cache_key is not None,
+                        controls.service_tier is not None,
+                        controls.tool_choice is not None,
+                        controls.parallel_tool_calls is not None,
+                        controls.store is not None,
+                    )
                 )
             )
-        )
+
+        if not protocol_supported:
+            return False
+        return cls.required_capabilities(request).issubset(spec.effective_capabilities())
 
     def rank(self, request: NormalizedRequest) -> list[ProviderSpec]:
         candidates = [

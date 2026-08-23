@@ -2,6 +2,20 @@
 
 All notable changes to AgentMesh Gateway are documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- Explicit provider capability declarations for `text`, `tools`, `reasoning`, and `native_responses_tools`.
+- Capability-aware feasibility filtering before latency/cost/quality/ordered routing policies are applied.
+- Effective provider capabilities in `/admin/providers` diagnostics.
+- ADR 0003 documenting the capability gate as a hard routing constraint and research foundation for later adaptive policies.
+
+### Compatibility
+
+- Existing provider configurations that omit `capabilities` keep adapter-derived defaults matching the prior behavior.
+- An explicit capability list is authoritative and can restrict a provider from tool, reasoning, or native-tool traffic even when the adapter shape would otherwise be eligible.
+
 ## [0.2.0] - 2026-08-23
 
 ### Added
