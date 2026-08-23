@@ -16,12 +16,20 @@ class Router:
         self.states = states
         self.policy = policy
 
+    @staticmethod
+    def _supports_request(spec: ProviderSpec, request: NormalizedRequest) -> bool:
+        controls = request.responses
+        if controls is not None and controls.requires_native and spec.adapter != "responses":
+            return False
+        return True
+
     def rank(self, request: NormalizedRequest) -> list[ProviderSpec]:
         candidates = [
             spec
             for spec in self.specs
             if self.states.get(spec.name).available()
             and (request.model == "auto" or request.model in spec.models)
+            and self._supports_request(spec, request)
         ]
         if self.policy == "ordered":
             return candidates
