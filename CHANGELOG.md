@@ -14,6 +14,9 @@ All notable changes to AgentMesh Gateway are documented in this file.
 - Observed input/output token totals, cost totals, observation counts, and last observed usage/cost in provider runtime diagnostics.
 - Native Responses streaming usage accounting when exact final usage is present in `response.completed`.
 - ADR 0004 defining observed-only accounting and the separation between routing `cost_hint` and measured cost evidence.
+- Bounded recent-success latency windows with deterministic nearest-rank p50/p95 diagnostics.
+- Configurable latency sample windows for deterministic tests and future policy simulation.
+- ADR 0005 documenting why latency distribution evidence remains separate from the current EWMA routing signal.
 
 ### Compatibility
 
@@ -21,6 +24,7 @@ All notable changes to AgentMesh Gateway are documented in this file.
 - An explicit capability list is authoritative and can restrict a provider from tool, reasoning, or native-tool traffic even when the adapter shape would otherwise be eligible.
 - Existing `cost_hint` routing behavior is unchanged; token prices and observed USD costs do not silently change routing scores.
 - Missing token usage or missing token prices remain unobserved rather than being treated as zero cost.
+- Existing latency and balanced routing behavior remains EWMA-based; adding p50/p95 does not silently change policy objectives.
 
 ## [0.2.0] - 2026-08-23
 
