@@ -16,6 +16,7 @@ permissions:
   contents: read
   pages: write
   id-token: write
+  issues: write
 
 concurrency:
   group: pages-${{ github.ref }}
@@ -62,3 +63,43 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+      - name: Verify live multilingual site
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="${{ steps.deployment.outputs.page_url }}"
+          base="${base%/}/"
+          urls=(
+            "${base}"
+            "${base}project.html"
+            "${base}tr/"
+            "${base}tr/project.html"
+            "${base}es/"
+            "${base}es/project.html"
+          )
+          for url in "${urls[@]}"; do
+            echo "Verifying ${url}"
+            body="$(curl -fsSL --retry 30 --retry-delay 5 --retry-all-errors "${url}")"
+            printf '%s' "${body}" | grep -q 'AgentMesh Gateway'
+            printf '%s' "${body}" | grep -q 'Faramarz Kowsari'
+          done
+      - name: Record deployment verification
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          marker='<!-- agentmesh-pages-live-verified -->'
+          body="${marker}
+
+GitHub Pages deployment verified successfully over HTTPS for all six multilingual pages.
+
+- English: https://faramarzkowsari.github.io/agentmesh-gateway/
+- English guide: https://faramarzkowsari.github.io/agentmesh-gateway/project.html
+- Türkçe: https://faramarzkowsari.github.io/agentmesh-gateway/tr/
+- Türkçe rehber: https://faramarzkowsari.github.io/agentmesh-gateway/tr/project.html
+- Español: https://faramarzkowsari.github.io/agentmesh-gateway/es/
+- Guía en español: https://faramarzkowsari.github.io/agentmesh-gateway/es/project.html"
+          if ! gh issue view 44 --json comments --jq '.comments[].body' | grep -Fq "${marker}"; then
+            gh issue comment 44 --body "${body}"
+          fi
+          gh issue close 44
