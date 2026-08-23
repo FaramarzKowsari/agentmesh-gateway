@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: write
-  issues: write
 
 jobs:
   release:
@@ -43,15 +42,24 @@ jobs:
               --title "AgentMesh Gateway v0.3.0" \
               --notes-file RELEASE_NOTES_v0.3.0.md
           fi
-      - name: Record verified release marker
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Commit release audit marker
         run: |
-          MARKER='<!-- agentmesh-v0.3.0-release-verified -->'
-          if gh issue view 35 --json comments --jq '.comments[].body' | grep -Fq "$MARKER"; then
-            echo "Release verification marker already recorded."
-          else
-            gh issue comment 35 --body "$MARKER
+          mkdir -p docs/releases
+          cat > docs/releases/v0.3.0-verified.md <<'EOF'
+          # AgentMesh Gateway v0.3.0 release verification
 
-Automated verification completed: tag \`v0.3.0\` exists and GitHub Release \`v0.3.0\` is available. Release target: \`a76edac94070dfffc9d5d9d15c6edd4499827fcd\`."
+          Git tag: `v0.3.0`
+
+          Release target: `a76edac94070dfffc9d5d9d15c6edd4499827fcd`
+
+          Verification: the release workflow successfully verified or created the annotated tag and successfully verified or created the GitHub Release using `RELEASE_NOTES_v0.3.0.md`.
+          EOF
+          if git diff --quiet -- docs/releases/v0.3.0-verified.md && git ls-files --error-unmatch docs/releases/v0.3.0-verified.md >/dev/null 2>&1; then
+            echo "Release audit marker already committed."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add docs/releases/v0.3.0-verified.md
+            git commit -m "chore: record verified v0.3.0 release"
+            git push origin HEAD:main
           fi
