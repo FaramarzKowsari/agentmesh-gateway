@@ -31,7 +31,7 @@
 
 ## Deferred compatibility backlog
 
-These are intentionally outside the verified v0.2 release surface rather than false blockers for v0.2:
+These are intentionally outside the verified v0.2/v0.3 surface rather than false release blockers:
 
 - [ ] cross-vendor reasoning translation
 - [ ] cross-vendor translation of Responses-native built-in tools
@@ -41,6 +41,7 @@ These are intentionally outside the verified v0.2 release surface rather than fa
 - [ ] Claude Code-compatible contract suite
 - [ ] Cline and OpenCode compatibility fixtures
 - [ ] per-client model aliases
+- [ ] vision/audio/context-length capability dimensions after the normalized request model supports them
 
 ## v0.3 — Adaptive router
 
@@ -48,13 +49,13 @@ These are intentionally outside the verified v0.2 release surface rather than fa
 - [x] bounded latency distribution / p50 / p95 tracking
 - [x] deterministic local request-quota windows and hard exhaustion gate
 - [x] explicit capability gate for text, tools, reasoning, and native Responses tools
-- [ ] extend capability requirements to vision/context length after the normalized request model supports them
-- [ ] task classifier
-- [ ] benchmark-derived quality profiles
+- [x] deterministic semantic task classes for text/tool/reasoning/native-tool requests
+- [x] provenance-checked benchmark quality-profile schema
 - [x] deterministic no-network policy simulation CLI with JSON/CSV output
-- [ ] adaptive constrained routing experiments after deterministic simulation exists
+- [x] offline `adaptive_balanced` constrained multi-objective baseline
+- [x] offline `constrained_ucb` contextual experimental baseline with chosen-only feedback
 
-## v0.4 — Control plane
+## v0.4 — Control plane and expanded evidence
 
 - [ ] Web dashboard
 - [ ] encrypted local secret store
@@ -62,6 +63,8 @@ These are intentionally outside the verified v0.2 release surface rather than fa
 - [ ] SQLite/PostgreSQL persistence
 - [ ] Prometheus and OpenTelemetry exporters
 - [ ] audit log
+- [ ] real reproducible benchmark trace/profile publication
+- [ ] vision/audio/context capability expansion when representable losslessly
 
 ## v0.5 — Distribution
 
