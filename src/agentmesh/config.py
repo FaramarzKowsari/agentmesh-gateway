@@ -3,12 +3,39 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, cast
 
 from agentmesh.errors import ConfigurationError
 
 AdapterName = Literal["openai", "anthropic", "responses"]
 RoutingPolicy = Literal["balanced", "latency", "cost", "quality", "ordered"]
+Capability = Literal["text", "tools", "reasoning", "native_responses_tools"]
+
+KNOWN_CAPABILITIES = frozenset(
+    {
+        "text",
+        "tools",
+        "reasoning",
+        "native_responses_tools",
+    }
+)
+
+
+def _parse_capabilities(value: object) -> tuple[Capability, ...] | None:
+    if value is None:
+        return None
+    if not isinstance(value, list):
+        raise ValueError("capabilities must be a list")
+
+    capabilities: list[Capability] = []
+    for raw in value:
+        capability = str(raw)
+        if capability not in KNOWN_CAPABILITIES:
+            raise ValueError(f"unsupported capability: {capability}")
+        typed = cast(Capability, capability)
+        if typed not in capabilities:
+            capabilities.append(typed)
+    return tuple(capabilities)
 
 
 @dataclass(slots=True, frozen=True)
@@ -22,6 +49,14 @@ class ProviderSpec:
     quality_hint: float = 0.5
     weight: float = 1.0
     timeout_seconds: float = 120.0
+    capabilities: tuple[Capability, ...] | None = None
+
+    def effective_capabilities(self) -> frozenset[Capability]:
+        if self.capabilities is not None:
+            return frozenset(self.capabilities)
+        if self.adapter == "responses":
+            return frozenset({"text", "tools", "reasoning", "native_responses_tools"})
+        return frozenset({"text", "tools"})
 
     @classmethod
     def from_dict(cls, data: dict[str, object]) -> ProviderSpec:
@@ -42,6 +77,7 @@ class ProviderSpec:
                 quality_hint=float(data.get("quality_hint", 0.5)),
                 weight=float(data.get("weight", 1.0)),
                 timeout_seconds=float(data.get("timeout_seconds", 120.0)),
+                capabilities=_parse_capabilities(data.get("capabilities")),
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise ConfigurationError(f"invalid provider specification: {exc}") from exc
