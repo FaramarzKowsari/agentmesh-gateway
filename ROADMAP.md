@@ -51,7 +51,7 @@ These are intentionally outside the verified v0.2 release surface rather than fa
 - [ ] extend capability requirements to vision/context length after the normalized request model supports them
 - [ ] task classifier
 - [ ] benchmark-derived quality profiles
-- [ ] policy simulation CLI
+- [x] deterministic no-network policy simulation CLI with JSON/CSV output
 - [ ] adaptive constrained routing experiments after deterministic simulation exists
 
 ## v0.4 — Control plane

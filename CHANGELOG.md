@@ -20,6 +20,10 @@ All notable changes to AgentMesh Gateway are documented in this file.
 - Optional deterministic local request-quota windows with hard exhaustion filtering before policy scoring.
 - Quota diagnostics for used/remaining attempts, pressure, exhaustion, and reset interval.
 - ADR 0006 defining outbound-attempt counting and the distinction between local quota control and vendor-side rate limits.
+- Deterministic no-network policy simulation engine over provider JSON and request/outcome JSONL traces.
+- `agentmesh simulate` with baseline-policy comparison plus JSON/CSV output for analysis tooling.
+- Example simulation fixtures explicitly labeled as mechanics-only rather than benchmark evidence.
+- ADR 0007 documenting fresh-state counterfactual policy replay and missing-observation rules.
 
 ### Compatibility
 
@@ -29,6 +33,7 @@ All notable changes to AgentMesh Gateway are documented in this file.
 - Missing token usage or missing token prices remain unobserved rather than being treated as zero cost.
 - Existing latency and balanced routing behavior remains EWMA-based; adding p50/p95 does not silently change policy objectives.
 - Providers without request-quota configuration behave as before. Configured quota pressure is diagnostic; only exhaustion is a hard feasibility gate.
+- Simulation reuses runtime feasibility/state semantics without contacting provider `base_url` values.
 
 ## [0.2.0] - 2026-08-23
 
