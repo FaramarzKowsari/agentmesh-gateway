@@ -26,6 +26,24 @@ def test_gateway_auth() -> None:
     assert response.status_code == 200
 
 
+def test_admin_provider_state_uses_gateway_auth() -> None:
+    client = TestClient(create_app(app_settings("secret")))
+    assert client.get("/admin/providers").status_code == 401
+
+    response = client.get(
+        "/admin/providers",
+        headers={"Authorization": "Bearer secret"},
+    )
+    assert response.status_code == 200
+    assert response.json()["local"]["adapter"] == "openai"
+
+
+def test_health_remains_public_when_gateway_auth_is_enabled() -> None:
+    client = TestClient(create_app(app_settings("secret")))
+    assert client.get("/healthz").status_code == 200
+    assert client.get("/readyz").status_code == 200
+
+
 def test_request_id_is_preserved_when_supplied() -> None:
     client = TestClient(create_app(app_settings()))
     response = client.get("/healthz", headers={"x-request-id": "trace-123"})
