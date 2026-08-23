@@ -1,5 +1,6 @@
 name: verify-pages-live
 
+# Independent HTTPS verification for the published multilingual research site.
 on:
   push:
     branches: [main]
