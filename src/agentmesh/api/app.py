@@ -96,7 +96,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=503, detail="no provider circuit is available")
         return {"status": "ready", "providers": available}
 
-    @app.get("/admin/providers")
+    @app.get("/admin/providers", dependencies=[Depends(require_gateway_token)])
     async def provider_states() -> dict[str, object]:
         result: dict[str, object] = {}
         for spec in settings.providers:
