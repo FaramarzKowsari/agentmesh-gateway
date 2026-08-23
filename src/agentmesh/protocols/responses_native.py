@@ -54,15 +54,22 @@ def attach_responses_controls(
         (
             reasoning is not None,
             bool(include),
+            isinstance(prompt_cache_key, str),
+            isinstance(service_tier, str),
             text is not None,
             stream_options is not None,
             client_metadata is not None,
+            tool_choice is not None,
+            isinstance(parallel_tool_calls, bool),
+            isinstance(store, bool),
             _has_native_input_item(payload.get("input")),
         )
     )
 
     controls = ResponsesControls(
-        instructions=payload.get("instructions") if isinstance(payload.get("instructions"), str) else None,
+        instructions=(
+            payload.get("instructions") if isinstance(payload.get("instructions"), str) else None
+        ),
         reasoning=reasoning,
         include=include,
         prompt_cache_key=prompt_cache_key if isinstance(prompt_cache_key, str) else None,
