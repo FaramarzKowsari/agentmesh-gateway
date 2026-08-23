@@ -47,7 +47,8 @@ These are intentionally outside the verified v0.2 release surface rather than fa
 - [ ] token-normalized cost accounting
 - [ ] EWMA latency percentiles
 - [ ] quota window tracking
-- [ ] capability tags (vision, tools, reasoning, context length)
+- [x] explicit capability gate for text, tools, reasoning, and native Responses tools
+- [ ] extend capability requirements to vision/context length after the normalized request model supports them
 - [ ] task classifier
 - [ ] benchmark-derived quality profiles
 - [ ] policy simulation CLI
