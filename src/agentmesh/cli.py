@@ -5,6 +5,8 @@ from pathlib import Path
 import typer
 import uvicorn
 
+from agentmesh import simulation
+
 app = typer.Typer(no_args_is_help=True, help="AgentMesh Gateway CLI")
 
 
@@ -38,24 +40,15 @@ def simulate(
     format: str = typer.Option("json", help="Output format: json or csv"),
 ) -> None:
     """Replay a deterministic no-network routing trace."""
-    from agentmesh.simulation import (
-        load_provider_specs,
-        load_trace,
-        parse_policies,
-        render_csv,
-        render_json,
-        simulate as run_simulation,
-    )
-
     try:
-        specs = load_provider_specs(providers)
-        rows = load_trace(trace)
-        selected_policies = parse_policies(policies)
-        result = run_simulation(specs, rows, selected_policies)
+        specs = simulation.load_provider_specs(providers)
+        rows = simulation.load_trace(trace)
+        selected_policies = simulation.parse_policies(policies)
+        result = simulation.simulate(specs, rows, selected_policies)
         if format == "json":
-            rendered = render_json(result)
+            rendered = simulation.render_json(result)
         elif format == "csv":
-            rendered = render_csv(result)
+            rendered = simulation.render_csv(result)
         else:
             raise ValueError("format must be json or csv")
     except (OSError, ValueError) as exc:
