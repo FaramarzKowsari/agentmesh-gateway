@@ -108,6 +108,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "cost_hint": spec.cost_hint,
                 "input_cost_per_million": spec.input_cost_per_million,
                 "output_cost_per_million": spec.output_cost_per_million,
+                "request_quota_limit": spec.request_quota_limit,
+                "request_quota_window_seconds": spec.request_quota_window_seconds,
+                "quota": states.quota_snapshot(spec.name),
                 "available": state.available(),
                 "successes": state.successes,
                 "failures": state.failures,
@@ -171,10 +174,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         normalized = attach_responses_controls(parse_responses_request(payload), payload)
         if normalized.stream:
             gateway.ensure_eligible(normalized)
-            events = render_responses_stream_or_native(
-                gateway.stream(normalized),
-                normalized.model,
-            )
+            events = render_responses_stream_or_native(gateway.stream(normalized), normalized.model)
             return StreamingResponse(events, media_type="text/event-stream")
         response = await gateway.complete(normalized)
         return render_responses_or_native(response)
