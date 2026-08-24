@@ -34,7 +34,7 @@ jobs:
           gh issue comment "${REPORT_ISSUE}" --body "Portable v0.3.0 build started. Actions run: ${run_url}"
 
   build-and-publish:
-    name: v0.3.0 portable (${{ runner.os }} / ${{ runner.arch }})
+    name: v0.3.0 portable (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
