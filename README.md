@@ -10,6 +10,22 @@
 
 The project is an original implementation. It does not copy source code, documentation, assets, internal naming, or commit history from `free-claude-code` or another gateway project. See [PROVENANCE.md](PROVENANCE.md).
 
+## Standalone downloads — no Python required
+
+AgentMesh Gateway v0.3.0 is available as a **single-file standalone executable** for supported desktop platforms. Download the file for your operating system from the [v0.3.0 GitHub Release](https://github.com/FaramarzKowsari/agentmesh-gateway/releases/tag/v0.3.0):
+
+| Platform | Download |
+| --- | --- |
+| Windows x64 | [`AgentMesh-Gateway-windows-x64.exe`](https://github.com/FaramarzKowsari/agentmesh-gateway/releases/download/v0.3.0/AgentMesh-Gateway-windows-x64.exe) |
+| Linux x64 | [`AgentMesh-Gateway-linux-x64`](https://github.com/FaramarzKowsari/agentmesh-gateway/releases/download/v0.3.0/AgentMesh-Gateway-linux-x64) |
+| macOS Apple Silicon / ARM64 | [`AgentMesh-Gateway-macos-arm64`](https://github.com/FaramarzKowsari/agentmesh-gateway/releases/download/v0.3.0/AgentMesh-Gateway-macos-arm64) |
+
+Each binary has a matching `.sha256` sidecar in the Release for integrity verification. The release binaries were built on GitHub-hosted Windows, Linux and macOS runners and smoke-tested as frozen executables using both the `version` command and a live `/healthz` request.
+
+Running the standalone binary with no command starts the gateway on `127.0.0.1:8787`; `version` and `simulate` remain available as CLI commands. Python is not required on the target computer. The executable contains the gateway, **not an AI model**: you still need a configured local provider such as Ollama or credentials for a supported remote provider.
+
+The current CI binaries are not commercially code-signed with Windows Authenticode or Apple Developer ID, so Windows SmartScreen or macOS Gatekeeper may show a first-run warning. See [docs/standalone.md](docs/standalone.md) for usage, checksum verification and platform notes.
+
 ## v0.3.0 at a glance
 
 v0.3.0 keeps the v0.2 agent-protocol compatibility layer and adds a reproducible adaptive-routing research substrate:
