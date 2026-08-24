@@ -1,0 +1,158 @@
+name: portable-binaries
+
+on:
+  pull_request:
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "packaging/**"
+      - "pyproject.toml"
+      - ".github/workflows/portable-binaries.yml"
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: portable (${{ runner.os }} / ${{ runner.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-22.04
+          - windows-latest
+          - macos-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install application and packager
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e . "pyinstaller>=6.11,<7"
+
+      - name: Build one-file executable
+        run: python -m PyInstaller --clean --noconfirm --distpath dist packaging/agentmesh.spec
+
+      - name: Name binary and write SHA-256
+        shell: python
+        env:
+          RUNNER_OS_NAME: ${{ runner.os }}
+          RUNNER_ARCH_NAME: ${{ runner.arch }}
+        run: |
+          from __future__ import annotations
+
+          import hashlib
+          import os
+          import shutil
+          from pathlib import Path
+
+          os_name = os.environ["RUNNER_OS_NAME"]
+          arch = os.environ["RUNNER_ARCH_NAME"].lower()
+          extension = ".exe" if os_name == "Windows" else ""
+          source = Path("dist") / f"AgentMesh-Gateway{extension}"
+          if not source.is_file():
+              raise SystemExit(f"missing PyInstaller output: {source}")
+
+          slug = {"Windows": "windows", "Linux": "linux", "macOS": "macos"}[os_name]
+          release_dir = Path("release")
+          release_dir.mkdir(exist_ok=True)
+          target = release_dir / f"AgentMesh-Gateway-{slug}-{arch}{extension}"
+          shutil.copy2(source, target)
+          if os_name != "Windows":
+              target.chmod(0o755)
+
+          digest = hashlib.sha256(target.read_bytes()).hexdigest()
+          checksum = target.with_name(target.name + ".sha256")
+          checksum.write_text(f"{digest}  {target.name}\n", encoding="utf-8")
+          print(target)
+          print(checksum)
+
+      - name: Smoke-test standalone executable
+        shell: python
+        run: |
+          from __future__ import annotations
+
+          import json
+          import os
+          import subprocess
+          import time
+          import urllib.request
+          from pathlib import Path
+
+          binaries = [path for path in Path("release").iterdir() if not path.name.endswith(".sha256")]
+          if len(binaries) != 1:
+              raise SystemExit(f"expected one binary, found: {binaries}")
+          binary = binaries[0].resolve()
+
+          version = subprocess.run(
+              [str(binary), "version"],
+              check=True,
+              capture_output=True,
+              text=True,
+              timeout=60,
+          ).stdout.strip()
+          if not version:
+              raise SystemExit("standalone version command returned no output")
+          print(f"standalone version: {version}")
+
+          process = subprocess.Popen(
+              [str(binary), "serve", "--host", "127.0.0.1", "--port", "18787"],
+              stdout=subprocess.PIPE,
+              stderr=subprocess.STDOUT,
+              text=True,
+          )
+          try:
+              deadline = time.time() + 75
+              payload = None
+              while time.time() < deadline:
+                  if process.poll() is not None:
+                      output = process.stdout.read() if process.stdout else ""
+                      raise SystemExit(f"gateway exited early with {process.returncode}:\n{output}")
+                  try:
+                      with urllib.request.urlopen("http://127.0.0.1:18787/healthz", timeout=2) as response:
+                          if response.status == 200:
+                              payload = response.read().decode("utf-8")
+                              break
+                  except Exception:
+                      time.sleep(1)
+              if payload is None:
+                  raise SystemExit("standalone gateway did not become healthy within 75 seconds")
+              json.loads(payload)
+              print(f"healthz: {payload}")
+          finally:
+              process.terminate()
+              try:
+                  process.wait(timeout=10)
+              except subprocess.TimeoutExpired:
+                  process.kill()
+                  process.wait(timeout=10)
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: portable-${{ runner.os }}-${{ runner.arch }}
+          path: release/*
+          if-no-files-found: error
+
+      - name: Attach binaries to tagged GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          gh release view "$tag" >/dev/null 2>&1 || \
+            gh release create "$tag" --verify-tag --title "AgentMesh Gateway $tag" --generate-notes || \
+            gh release view "$tag" >/dev/null
+          gh release upload "$tag" release/* --clobber
