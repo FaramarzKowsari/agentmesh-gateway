@@ -1,6 +1,10 @@
 # AgentMesh Gateway
 
-[![DOI](https://zenodo.org/badge/1343123888.svg)](https://doi.org/10.5281/zenodo.22069468)
+[![AgentMesh Gateway social preview](docs/social-preview.jpg)](https://faramarzkowsari.github.io/agentmesh-gateway/)
+
+[![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.22069468-1682D4?logo=zenodo&logoColor=white)](https://doi.org/10.5281/zenodo.22069468)
+
+**DOI:** [10.5281/zenodo.22069468](https://doi.org/10.5281/zenodo.22069468)
 
 **AgentMesh Gateway** is an independent, protocol-aware gateway for coding agents, AI clients, and model services. It exposes OpenAI Chat Completions-shaped, OpenAI Responses-shaped, and Anthropic Messages-shaped endpoints while routing requests across local and remote providers with explicit feasibility constraints, health-aware fallback, and deterministic policy logic.
 
