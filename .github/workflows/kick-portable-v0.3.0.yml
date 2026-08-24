@@ -1,0 +1,27 @@
+name: kick-portable-v0.3.0
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  actions: write
+  issues: write
+
+jobs:
+  dispatch:
+    if: startsWith(github.event.issue.title, 'portable-build:')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch portable packaging workflow
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          REPORT_ISSUE: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          gh workflow run package-v0.3.0-portables.yml \
+            --ref main \
+            -f report_issue="${REPORT_ISSUE}"
+          gh issue comment "${REPORT_ISSUE}" --body "Portable build dispatch requested. The packaging workflow will post its Actions run URL when it starts."
