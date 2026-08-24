@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   build:
-    name: portable (${{ runner.os }} / ${{ runner.arch }})
+    name: portable (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
@@ -83,7 +83,6 @@ jobs:
           from __future__ import annotations
 
           import json
-          import os
           import subprocess
           import time
           import urllib.request
