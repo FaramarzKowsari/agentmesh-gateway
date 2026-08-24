@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 
-from PyInstaller.utils.hooks import collect_all, copy_metadata
+from PyInstaller.utils.hooks import collect_all, collect_submodules, copy_metadata
 
 ROOT = os.path.abspath(os.path.join(SPECPATH, ".."))
 SCRIPT = os.path.join(ROOT, "src", "agentmesh", "portable.py")
@@ -13,7 +13,7 @@ SRC = os.path.join(ROOT, "src")
 
 datas = []
 binaries = []
-hiddenimports = []
+hiddenimports = collect_submodules("agentmesh")
 
 for package in (
     "uvicorn",
