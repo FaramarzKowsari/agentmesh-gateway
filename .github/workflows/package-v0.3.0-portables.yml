@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/package-v0.3.0-portables.yml"
+  issues:
+    types: [opened]
 
 permissions:
   contents: write
@@ -12,6 +14,7 @@ permissions:
 
 jobs:
   build-and-publish:
+    if: github.event_name == 'push' || startsWith(github.event.issue.title, 'portable-build:')
     name: v0.3.0 portable (${{ runner.os }} / ${{ runner.arch }})
     strategy:
       fail-fast: false
@@ -158,21 +161,22 @@ jobs:
 
   report:
     name: report portable verification
-    if: always()
+    if: always() && (github.event_name == 'push' || startsWith(github.event.issue.title, 'portable-build:'))
     needs: build-and-publish
     runs-on: ubuntu-latest
     steps:
-      - name: Report aggregate matrix result to Issue 55
+      - name: Report aggregate matrix result
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           MATRIX_RESULT: ${{ needs.build-and-publish.result }}
+          REPORT_ISSUE: ${{ github.event.issue.number || 55 }}
         run: |
           set -euo pipefail
           run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          gh issue comment 55 --body "Portable v0.3.0 matrix result: **${MATRIX_RESULT}**. Actions run: ${run_url}"
+          gh issue comment "${REPORT_ISSUE}" --body "Portable v0.3.0 matrix result: **${MATRIX_RESULT}**. Actions run: ${run_url}"
           if [ "${MATRIX_RESULT}" = "success" ]; then
-            gh issue close 55 --reason completed
+            gh issue close "${REPORT_ISSUE}" --reason completed
           else
             exit 1
           fi
