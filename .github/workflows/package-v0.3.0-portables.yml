@@ -1,6 +1,10 @@
 name: package-v0.3.0-portables
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/package-v0.3.0-portables.yml"
   workflow_dispatch:
     inputs:
       report_issue:
@@ -15,7 +19,7 @@ permissions:
 jobs:
   announce:
     name: announce portable build
-    if: inputs.report_issue != ''
+    if: github.event_name == 'push' || inputs.report_issue != ''
     runs-on: ubuntu-latest
     steps:
       - name: Report run start
@@ -23,7 +27,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          REPORT_ISSUE: ${{ inputs.report_issue }}
+          REPORT_ISSUE: ${{ inputs.report_issue || '63' }}
         run: |
           set -euo pipefail
           run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
@@ -187,14 +191,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           MATRIX_RESULT: ${{ needs.build-and-publish.result }}
-          REPORT_ISSUE: ${{ inputs.report_issue }}
+          REPORT_ISSUE: ${{ inputs.report_issue || '63' }}
         run: |
           set -euo pipefail
           run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          if [ -n "${REPORT_ISSUE}" ]; then
-            gh issue comment "${REPORT_ISSUE}" --body "Portable v0.3.0 matrix result: **${MATRIX_RESULT}**. Actions run: ${run_url}"
-            if [ "${MATRIX_RESULT}" = "success" ]; then
-              gh issue close "${REPORT_ISSUE}" --reason completed
-            fi
+          gh issue comment "${REPORT_ISSUE}" --body "Portable v0.3.0 matrix result: **${MATRIX_RESULT}**. Actions run: ${run_url}"
+          if [ "${MATRIX_RESULT}" = "success" ]; then
+            gh issue close "${REPORT_ISSUE}" --reason completed
           fi
           test "${MATRIX_RESULT}" = "success"
