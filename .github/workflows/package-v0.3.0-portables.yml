@@ -13,6 +13,21 @@ permissions:
   issues: write
 
 jobs:
+  announce:
+    name: announce portable build
+    if: github.event_name == 'issues' && startsWith(github.event.issue.title, 'portable-build:')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report run start
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPORT_ISSUE: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          gh issue comment "${REPORT_ISSUE}" --body "Portable v0.3.0 build started. Actions run: ${run_url}"
+
   build-and-publish:
     if: github.event_name == 'push' || startsWith(github.event.issue.title, 'portable-build:')
     name: v0.3.0 portable (${{ runner.os }} / ${{ runner.arch }})
