@@ -1,12 +1,12 @@
 name: package-v0.3.0-portables
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/package-v0.3.0-portables.yml"
-  issues:
-    types: [opened]
+  workflow_dispatch:
+    inputs:
+      report_issue:
+        description: Optional issue number for run/result reporting
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -15,21 +15,21 @@ permissions:
 jobs:
   announce:
     name: announce portable build
-    if: github.event_name == 'issues' && startsWith(github.event.issue.title, 'portable-build:')
+    if: inputs.report_issue != ''
     runs-on: ubuntu-latest
     steps:
       - name: Report run start
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          REPORT_ISSUE: ${{ github.event.issue.number }}
+          GH_REPO: ${{ github.repository }}
+          REPORT_ISSUE: ${{ inputs.report_issue }}
         run: |
           set -euo pipefail
           run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           gh issue comment "${REPORT_ISSUE}" --body "Portable v0.3.0 build started. Actions run: ${run_url}"
 
   build-and-publish:
-    if: github.event_name == 'push' || startsWith(github.event.issue.title, 'portable-build:')
     name: v0.3.0 portable (${{ runner.os }} / ${{ runner.arch }})
     strategy:
       fail-fast: false
@@ -169,6 +169,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           gh release view v0.3.0 >/dev/null
@@ -176,7 +177,7 @@ jobs:
 
   report:
     name: report portable verification
-    if: always() && (github.event_name == 'push' || startsWith(github.event.issue.title, 'portable-build:'))
+    if: always()
     needs: build-and-publish
     runs-on: ubuntu-latest
     steps:
@@ -184,14 +185,16 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           MATRIX_RESULT: ${{ needs.build-and-publish.result }}
-          REPORT_ISSUE: ${{ github.event.issue.number || 55 }}
+          REPORT_ISSUE: ${{ inputs.report_issue }}
         run: |
           set -euo pipefail
           run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          gh issue comment "${REPORT_ISSUE}" --body "Portable v0.3.0 matrix result: **${MATRIX_RESULT}**. Actions run: ${run_url}"
-          if [ "${MATRIX_RESULT}" = "success" ]; then
-            gh issue close "${REPORT_ISSUE}" --reason completed
-          else
-            exit 1
+          if [ -n "${REPORT_ISSUE}" ]; then
+            gh issue comment "${REPORT_ISSUE}" --body "Portable v0.3.0 matrix result: **${MATRIX_RESULT}**. Actions run: ${run_url}"
+            if [ "${MATRIX_RESULT}" = "success" ]; then
+              gh issue close "${REPORT_ISSUE}" --reason completed
+            fi
           fi
+          test "${MATRIX_RESULT}" = "success"
