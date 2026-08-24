@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: write
+  issues: write
 
 jobs:
   build-and-publish:
@@ -154,3 +155,24 @@ jobs:
           set -euo pipefail
           gh release view v0.3.0 >/dev/null
           gh release upload v0.3.0 release/* --clobber
+
+  report:
+    name: report portable verification
+    if: always()
+    needs: build-and-publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report aggregate matrix result to Issue 55
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MATRIX_RESULT: ${{ needs.build-and-publish.result }}
+        run: |
+          set -euo pipefail
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          gh issue comment 55 --body "Portable v0.3.0 matrix result: **${MATRIX_RESULT}**. Actions run: ${run_url}"
+          if [ "${MATRIX_RESULT}" = "success" ]; then
+            gh issue close 55 --reason completed
+          else
+            exit 1
+          fi
