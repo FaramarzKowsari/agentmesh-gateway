@@ -5,6 +5,15 @@
   "repository": "https://github.com/FaramarzKowsari/agentmesh-gateway",
   "doi": "10.5281/zenodo.22069468",
   "languages": ["en", "tr", "es"],
+  "author": {
+    "name": "Faramarz Kowsari",
+    "official_website": "https://FaramarzKowsari.github.io",
+    "google_play_books": "https://play.google.com/store/search?q=Faramarz%20Kowsari&c=books",
+    "google_scholar": "https://scholar.google.com/citations?user=G7tP5WMAAAAJ&hl=en",
+    "github": "https://github.com/FaramarzKowsari",
+    "linkedin": "https://www.linkedin.com/in/faramarzkowsari",
+    "orcid": "https://orcid.org/0000-0003-1692-0453"
+  },
   "pages": {
     "en": ["/", "/project.html"],
     "tr": ["/tr/", "/tr/project.html"],
