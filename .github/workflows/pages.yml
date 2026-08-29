@@ -61,7 +61,7 @@ jobs:
           path: docs
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
       - name: Verify live multilingual site
         shell: bash
         run: |
